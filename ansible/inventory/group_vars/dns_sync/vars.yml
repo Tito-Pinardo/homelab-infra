@@ -1,0 +1,23 @@
+# Dominios cuyo registro A mantengo sincronizado con la IP publica dinamica.
+# Anadir un dominio es una entrada mas aqui.
+dns_sync_cloudflare_token: "{{ vault_dns_sync_cloudflare_token }}"
+
+dns_sync_domains:
+  - domain: "example.org"
+    zone_id: "CHANGEME"
+    record_id: "CHANGEME"
+  - domain: "example.com"
+    zone_id: "CHANGEME"
+    record_id: "CHANGEME"
+  - domain: "example.net"
+    zone_id: "CHANGEME"
+    record_id: "CHANGEME"
+
+# Claves publicas autorizadas a empujar al repositorio de respaldo (rol
+# git_backup). No son secretas.
+git_backup_authorized_keys:
+  - "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
+  - "ssh-rsa AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
+  # Clave de solo lectura para que el asistente compruebe la fecha del ultimo
+  # commit del respaldo.
+  - "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"

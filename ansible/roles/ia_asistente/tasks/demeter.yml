@@ -1,0 +1,213 @@
+---
+- name: Instalar dependencias de la web y lectura local de PDF
+  ansible.builtin.apt:
+    name: [python3-flask, python3-waitress, poppler-utils]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Comprobar si existe el recolector anterior
+  ansible.builtin.stat:
+    path: /etc/systemd/system/demeter-capture.service
+  register: demeter_capture_unit
+
+- name: Pausar captura durante el despliegue y migracion
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop: [demeter-capture.timer, demeter-capture.service]
+  when: demeter_capture_unit.stat.exists
+
+- name: Crear usuario aislado de Demeter
+  ansible.builtin.user:
+    name: demeter
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Crear directorios privados de Demeter
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: demeter
+    group: demeter
+    mode: "0700"
+  loop:
+    - /var/lib/demeter
+    - /var/lib/demeter/backups
+
+- name: Crear directorio del codigo
+  ansible.builtin.file:
+    path: /opt/demeter
+    state: directory
+    owner: root
+    group: demeter
+    mode: "0750"
+
+- name: Instalar modulos de Demeter
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/opt/demeter/{{ item }}"
+    owner: root
+    group: demeter
+    mode: "0640"
+    backup: true
+  loop:
+    - demeter_store.py
+    - demeter_extract.py
+    - demeter_review.py
+    - demeter_cli.py
+    - demeter_mail.py
+    - demeter_backup.py
+    - demeter_invoices.py
+    - demeter_tiendas.py
+    - demeter_documents.py
+    - demeter_web.py
+    - demeter_amazon.py
+    - demeter_automation.py
+    - demeter_queries.py
+    - demeter_query_server.py
+    - demeter_undo_server.py
+
+- name: Retirar bytecode antiguo de Demeter
+  # Un .pyc viejo puede sobrevivir a la copia de su .py (misma marca de tiempo
+  # al segundo) y dejar el servicio con codigo anterior.
+  ansible.builtin.file:
+    path: /opt/demeter/__pycache__
+    state: absent
+
+- name: Instalar pagina de revision
+  ansible.builtin.copy:
+    src: demeter_static/
+    dest: /opt/demeter/demeter_static/
+    owner: root
+    group: demeter
+    mode: "0640"
+    directory_mode: "0750"
+
+- name: Generar secreto de comunicacion con el proxy una sola vez
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - "import os,secrets,pathlib; os.umask(0o077); pathlib.Path('/etc/demeter-proxy-token').write_text(secrets.token_urlsafe(48))"
+    creates: /etc/demeter-proxy-token
+  no_log: true
+
+- name: Permitir al servicio leer su secreto
+  ansible.builtin.file:
+    path: /etc/demeter-proxy-token
+    owner: root
+    group: demeter
+    mode: "0640"
+
+- name: Leer secreto para provisionar el proxy local
+  ansible.builtin.slurp:
+    src: /etc/demeter-proxy-token
+  register: demeter_proxy_secret
+  no_log: true
+
+- name: Copiar y comprobar restauracion antes de migrar la base existente
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/runuser
+      - -u
+      - demeter
+      - --
+      - /usr/bin/python3
+      - /opt/demeter/demeter_backup.py
+      - --db
+      - /var/lib/demeter/queue.sqlite
+      - --directory
+      - /var/lib/demeter/backups
+  changed_when: false
+
+- name: Inicializar o migrar la base privada
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/runuser
+      - -u
+      - demeter
+      - --
+      - /usr/bin/python3
+      - /opt/demeter/demeter_cli.py
+      - --db
+      - /var/lib/demeter/queue.sqlite
+      - init
+  changed_when: false
+
+- name: Instalar credenciales solo legibles por root para systemd
+  ansible.builtin.template:
+    src: demeter.env.j2
+    dest: /etc/demeter.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Instalar unidades de captura y copia
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - demeter-capture.service
+    - demeter-capture.timer
+    - demeter-backup.service
+    - demeter-backup.timer
+    - demeter-web.service
+    - demeter-query.service
+    - demeter-undo.service
+
+- name: Recargar unidades
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Habilitar captura solo tras la prueba controlada
+  ansible.builtin.systemd:
+    name: demeter-capture.timer
+    enabled: "{{ demeter_capture_enabled | default(false) | bool }}"
+    state: "{{ 'started' if (demeter_capture_enabled | default(false) | bool) else 'stopped' }}"
+
+- name: Activar copia diaria de la base de Demeter
+  ansible.builtin.systemd:
+    name: demeter-backup.timer
+    enabled: true
+    state: started
+
+- name: Activar pagina de revision privada
+  ansible.builtin.systemd:
+    name: demeter-web.service
+    enabled: true
+    state: restarted
+
+- name: Activar consultas locales de solo lectura para Hermes
+  ansible.builtin.systemd:
+    name: demeter-query.service
+    enabled: true
+    state: restarted
+
+- name: Activar la papelera de Element (solo deshace aprobaciones automaticas)
+  ansible.builtin.systemd:
+    name: demeter-undo.service
+    enabled: true
+    state: restarted
+
+- name: Instalar conexion de Hermes con Demeter
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: ia-bot
+    group: ia-bot
+    mode: "0750"
+    backup: true
+  # mensajes.py va con ia_bot.py: un despliegue solo de Demeter debe llevarlo
+  # tambien.
+  loop: [demeter_client.py, ia_tools.py, ia_bot.py, mensajes.py]
+  register: demeter_hermes_code
+
+- name: Recargar Hermes cuando cambian sus consultas
+  ansible.builtin.systemd:
+    name: ia-bot
+    state: restarted
+  when: demeter_hermes_code.changed

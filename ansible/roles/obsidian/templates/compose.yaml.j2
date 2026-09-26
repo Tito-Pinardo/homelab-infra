@@ -1,0 +1,18 @@
+# Generado por Ansible (roles/obsidian): no editar a mano, se sobrescribe.
+services:
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Madrid
+    volumes:
+      - /opt/stacks/obsidian/config:/config
+      - /opt/stacks/obsidian/vault:/config/Obsidian Vault
+    ports:
+      - 3006:3000
+    restart: unless-stopped
+    shm_size: 1gb

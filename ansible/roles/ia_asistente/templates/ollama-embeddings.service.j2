@@ -1,0 +1,23 @@
+[Unit]
+Description=Ollama (solo embeddings, nomic-embed-text) - asistente IA
+After=network.target
+
+[Service]
+Type=simple
+User=ollama
+Group=ollama
+Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_MODELS=/var/lib/ollama-embeddings/models
+# nomic-embed-text admite hasta 8192 tokens de contexto; el valor por
+# defecto de Ollama rechaza notas largas.
+Environment=OLLAMA_CONTEXT_LENGTH=8192
+Environment=LD_LIBRARY_PATH=/opt/ollama/lib/ollama
+# Sin HOME explicito, el binario intenta escribir su clave en /home/ollama,
+# que no existe, y falla.
+Environment=HOME=/var/lib/ollama-embeddings
+ExecStart=/opt/ollama/bin/ollama serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

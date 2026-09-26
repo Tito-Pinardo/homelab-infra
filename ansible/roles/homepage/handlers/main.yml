@@ -1,0 +1,16 @@
+---
+- name: reiniciar homepage
+  ansible.builtin.systemd:
+    name: homepage
+    state: restarted
+    daemon_reload: true
+
+- name: Regenerar la página estática tras actualizar la configuración
+  listen: reiniciar homepage
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:3000/api/revalidate"
+    return_content: true
+  register: homepage_revalidate
+  until: homepage_revalidate.status == 200 and (homepage_revalidate.json.revalidated | default(false))
+  retries: 10
+  delay: 2

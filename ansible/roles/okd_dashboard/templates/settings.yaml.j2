@@ -1,0 +1,11 @@
+title: {{ okd_dashboard_title }}
+theme: dark
+color: slate
+headerStyle: clean
+target: _blank
+layout:
+{% for category in okd_dashboard_categories %}
+  {{ category.name }}:
+    style: row
+    columns: 4
+{% endfor %}

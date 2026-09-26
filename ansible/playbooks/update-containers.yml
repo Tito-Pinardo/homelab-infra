@@ -1,0 +1,71 @@
+---
+# Actualiza las imagenes Docker de los stacks de compose y recrea solo los
+# contenedores cuya imagen ha cambiado. Los roles despliegan con
+# "pull: missing" a proposito, asi que las imagenes solo avanzan aqui.
+#
+# Uso:
+#   ansible-playbook playbooks/update-containers.yml                         # todos los CT
+#   ansible-playbook playbooks/update-containers.yml --limit dockge          # un CT
+#   ansible-playbook playbooks/update-containers.yml --limit dockge -e stacks=seerr,tautulli
+- name: Actualizar contenedores Docker
+  hosts: docker_compose
+  become: true
+  serial: 1
+  vars:
+    stacks_pedidos: "{{ (stacks | default('')).split(',') | map('trim') | select | list }}"
+    stacks_a_actualizar: >-
+      {{ docker_stacks | dict2items
+         | selectattr('key', 'in', stacks_pedidos if stacks_pedidos else docker_stacks.keys() | list)
+         | list }}
+  tasks:
+    # Un nombre mal escrito en -e stacks= no actualizaria nada sin avisar.
+    - name: Comprobar que los stacks pedidos existen
+      ansible.builtin.assert:
+        that: desconocidos | length == 0
+        fail_msg: "Stacks desconocidos: {{ desconocidos }}"
+      vars:
+        todos: "{{ ansible_play_hosts_all | map('extract', hostvars, 'docker_stacks') | map('list') | flatten }}"
+        desconocidos: "{{ stacks_pedidos | difference(todos) }}"
+      run_once: true
+
+    # ignore_buildable: las imagenes que se construyen en local no se bajan;
+    # se reconstruyen con su rol si cambian.
+    - name: Descargar imagenes nuevas
+      community.docker.docker_compose_v2_pull:
+        project_src: "{{ item.value }}"
+        ignore_buildable: true
+      loop: "{{ stacks_a_actualizar }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    # pull: never porque ya se bajaron arriba. wait: no da por buena la
+    # actualizacion hasta que los contenedores estan en marcha (y healthy
+    # si tienen healthcheck); si no, falla aqui en vez de en silencio.
+    - name: Recrear los contenedores con imagen nueva
+      community.docker.docker_compose_v2:
+        project_src: "{{ item.value }}"
+        state: present
+        pull: never
+        wait: true
+        wait_timeout: 180
+      loop: "{{ stacks_a_actualizar }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: recreados
+
+    - name: Resumen de lo recreado
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item.key }}:
+          {{ (item.actions | default([]) | selectattr('what', 'equalto', 'container')
+              | map(attribute='id') | unique | list) or 'sin cambios' }}
+      loop: "{{ recreados.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
+    # Las imagenes viejas quedan "colgando" tras cada actualizacion: sin
+    # esto el disco del CT se llena poco a poco. Solo las no usadas.
+    - name: Borrar imagenes antiguas sin usar
+      ansible.builtin.command: docker image prune -f
+      register: prune
+      changed_when: "'Total reclaimed space: 0B' not in prune.stdout"

@@ -1,0 +1,4 @@
+---
+- name: reiniciar caddy
+  ansible.builtin.command:
+    cmd: docker restart caddy

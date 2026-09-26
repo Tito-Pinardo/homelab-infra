@@ -1,0 +1,157 @@
+---
+# Homepage es una app Next.js sin release binaria: se compila (Node.js +
+# pnpm) dentro del CT. Necesita Node >= 22, que viene del repositorio de
+# NodeSource.
+
+- name: Instalar git y gnupg (gpg no viene en la plantilla minima de Debian)
+  ansible.builtin.apt:
+    name:
+      - git
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Descargar la clave GPG de NodeSource (ascii-armored)
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /tmp/nodesource-repo.gpg.key
+    mode: "0644"
+
+- name: Deconvertir la clave GPG a formato binario para apt
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /usr/share/keyrings/nodesource.gpg /tmp/nodesource-repo.gpg.key
+    creates: /usr/share/keyrings/nodesource.gpg
+
+- name: Añadir el repo apt de NodeSource (Node.js {{ nodejs_major_version }})
+  ansible.builtin.deb822_repository:
+    name: nodesource
+    types: deb
+    uris: "https://deb.nodesource.com/node_{{ nodejs_major_version }}.x"
+    suites: nodistro
+    components: main
+    signed_by: /usr/share/keyrings/nodesource.gpg
+    state: present
+
+- name: Instalar Node.js (via NodeSource) y npm
+  # state: latest a proposito: si nodejs ya estaba instalado desde Debian,
+  # "present" lo daria por bueno y no cambiaria al paquete de NodeSource.
+  ansible.builtin.apt:
+    name: nodejs
+    state: latest
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Instalar pnpm global (Homepage lo exige via preinstall hook)
+  community.general.npm:
+    name: pnpm
+    global: true
+    state: present
+
+- name: Clonar el codigo de Homepage {{ homepage_version }}
+  ansible.builtin.git:
+    repo: https://github.com/gethomepage/homepage.git
+    dest: "/opt/homepage-src-{{ homepage_version }}"
+    version: "{{ homepage_version }}"
+    depth: 1
+
+- name: Instalar dependencias (pnpm, frozen-lockfile)
+  ansible.builtin.command:
+    cmd: pnpm install --frozen-lockfile
+    chdir: "/opt/homepage-src-{{ homepage_version }}"
+    creates: "/opt/homepage-src-{{ homepage_version }}/node_modules/.pnpm"
+
+- name: Compilar (next build --webpack, salida standalone)
+  ansible.builtin.command:
+    cmd: pnpm run build
+    chdir: "/opt/homepage-src-{{ homepage_version }}"
+    creates: "/opt/homepage-src-{{ homepage_version }}/.next/standalone/server.js"
+  environment:
+    NEXT_TELEMETRY_DISABLED: "1"
+
+- name: Comprobar si ya existe el runtime final para esta version
+  ansible.builtin.stat:
+    path: "/opt/homepage-{{ homepage_version }}/server.js"
+  register: homepage_runtime_marker
+
+- name: Preparar directorio runtime versionado (solo si no existe ya)
+  when: not homepage_runtime_marker.stat.exists
+  block:
+    - name: Copiar la salida standalone (server.js + node_modules minimo)
+      ansible.builtin.copy:
+        src: "/opt/homepage-src-{{ homepage_version }}/.next/standalone/"
+        dest: "/opt/homepage-{{ homepage_version }}/"
+        remote_src: true
+        mode: preserve
+
+    - name: Copiar los assets estaticos (.next/static)
+      ansible.builtin.copy:
+        src: "/opt/homepage-src-{{ homepage_version }}/.next/static/"
+        dest: "/opt/homepage-{{ homepage_version }}/.next/static/"
+        remote_src: true
+        mode: preserve
+
+    - name: Copiar los assets publicos (favicon, imagenes fijas)
+      ansible.builtin.copy:
+        src: "/opt/homepage-src-{{ homepage_version }}/public/"
+        dest: "/opt/homepage-{{ homepage_version }}/public/"
+        remote_src: true
+        mode: preserve
+
+- name: Crear directorio de config
+  ansible.builtin.file:
+    path: "/opt/homepage-{{ homepage_version }}/config"
+    state: directory
+    mode: "0755"
+
+- name: Apuntar /opt/homepage a la version activa (symlink)
+  ansible.builtin.file:
+    src: "/opt/homepage-{{ homepage_version }}"
+    dest: /opt/homepage
+    state: link
+    force: true
+
+- name: Crear directorio de imágenes del panel
+  ansible.builtin.file:
+    path: /opt/homepage/public/images
+    state: directory
+    mode: "0755"
+  tags: [homepage_config]
+
+- name: Publicar fondo del dashboard
+  ansible.builtin.copy:
+    src: alpine-dusk.png
+    dest: /opt/homepage/public/images/alpine-dusk.png
+    mode: "0644"
+  tags: [homepage_config]
+  notify: reiniciar homepage
+
+# Etiqueta para actualizar solo la presentación, sin apt ni recompilaciones.
+- name: Desplegar configuración del dashboard
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/opt/homepage/config/{{ item }}"
+    mode: "0644"
+    backup: true
+  loop:
+    - services.yaml
+    - settings.yaml
+    - widgets.yaml
+    - bookmarks.yaml
+    - custom.css
+  tags: [homepage_config]
+  notify: reiniciar homepage
+
+- name: Desplegar unidad systemd
+  ansible.builtin.template:
+    src: homepage.service.j2
+    dest: /etc/systemd/system/homepage.service
+    mode: "0644"
+  notify: reiniciar homepage
+
+- name: Habilitar y arrancar Homepage
+  ansible.builtin.systemd:
+    name: homepage
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,64 @@
+# Bot de Matrix, separado del relay de alertas: no quiero que un fallo del
+# bot afecte al homeserver.
+
+- name: Instalar matrix-nio con soporte E2EE (mismo paquete que el relay de alertas)
+  ansible.builtin.apt:
+    name: python3-matrix-nio
+    state: present
+
+- name: Crear usuario de sistema para el bot
+  ansible.builtin.user:
+    name: ia-bot
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Crear directorios de estado del bot
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: ia-bot
+    group: ia-bot
+    mode: "0700"
+  loop:
+    - /var/lib/ia-bot
+    - /var/lib/ia-bot/store
+
+- name: Desplegar el codigo del bot y sus clientes
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: ia-bot
+    group: ia-bot
+    mode: "0750"
+    backup: true
+  tags: [ia_bot_config]
+  loop:
+    - ia_bot.py
+    - mensajes.py
+    - docker_estado.py
+    - local_llm_client.py
+    - qdrant_client.py
+    - ia_tools.py
+    - demeter_client.py
+    - voice_client.py
+    - amp_client.py
+    - cronos_client.py
+    - cronos_authorize.py
+  notify: reiniciar ia-bot
+
+- name: Desplegar unidad systemd del bot
+  ansible.builtin.template:
+    src: ia-bot.service.j2
+    dest: /etc/systemd/system/ia-bot.service
+    mode: "0644"
+    backup: true
+  tags: [ia_bot_config]
+  notify: reiniciar ia-bot
+
+- name: Habilitar y arrancar el bot
+  ansible.builtin.systemd:
+    name: ia-bot
+    enabled: true
+    state: started
+    daemon_reload: true

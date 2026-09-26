@@ -1,0 +1,29 @@
+---
+# Seerr (solicitudes de contenido). Sin secretos propios. Los datos se
+# restauran aparte.
+
+- name: Crear directorio del stack
+  ansible.builtin.file:
+    path: /opt/stacks/seerr
+    state: directory
+    mode: "0755"
+
+- name: Desplegar compose.yaml
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: /opt/stacks/seerr/compose.yaml
+    mode: "0644"
+
+- name: Crear directorio de config si no existe (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: /opt/stacks/seerr/config
+    state: directory
+    mode: "0755"
+    owner: "1000"
+    group: "1000"
+
+- name: Levantar el stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/stacks/seerr
+    state: present
+    pull: missing

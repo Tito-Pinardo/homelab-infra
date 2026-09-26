@@ -1,0 +1,17 @@
+{# Synapse sirve siempre una pagina de bienvenida en /_matrix/static/ y no se
+   puede desactivar. La bloqueo reescribiendo la ruta a algo que Synapse no
+   reconoce, asi responde 404 sin tocar el resto de /_matrix/. #}
+http:
+  middlewares:
+    block_matrix_static:
+      replacePath:
+        path: "/_matrix/blocked-by-policy"
+
+  routers:
+    matrix-static-block:
+      rule: "Host(`matrix.example.org`) && PathPrefix(`/_matrix/static`)"
+      entryPoints: [websecure]
+      service: matrix-example-org_svc
+      priority: 100
+      tls: {}
+      middlewares: ["block_matrix_static", "sec_headers@file"]

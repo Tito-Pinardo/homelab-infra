@@ -1,0 +1,80 @@
+# Conector de notas: rsync de solo lectura desde el host de las notas. La
+# clave dedicada se autoriza con obsidian_sync_access en el rol obsidian.
+
+- name: Crear usuario de sistema para el conector de Obsidian
+  ansible.builtin.user:
+    name: obsidian-sync
+    system: true
+    create_home: true
+    home: /var/lib/obsidian-sync
+    shell: /usr/sbin/nologin
+
+- name: Crear directorio .ssh del conector
+  ansible.builtin.file:
+    path: /var/lib/obsidian-sync/.ssh
+    state: directory
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0700"
+
+# Este usuario solo conecta a las notas.
+- name: Fijar identidad SSH del servidor Obsidian para el conector
+  ansible.builtin.copy:
+    content: "{{ ia_obsidian_vault_host_key }}\n"
+    dest: /var/lib/obsidian-sync/.ssh/known_hosts
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0600"
+    backup: true
+  tags: [obsidian_sync_config]
+
+- name: Generar clave SSH dedicada para el conector (si no existe)
+  community.crypto.openssh_keypair:
+    path: /var/lib/obsidian-sync/.ssh/id_ed25519
+    type: ed25519
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0600"
+
+- name: Leer la clave publica generada (para mostrarla al final)
+  ansible.builtin.slurp:
+    src: /var/lib/obsidian-sync/.ssh/id_ed25519.pub
+  register: obsidian_sync_pubkey
+
+- name: Crear directorio del espejo local del vault
+  ansible.builtin.file:
+    path: /var/lib/ia-asistente/obsidian_mirror
+    state: directory
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0750"
+
+- name: Desplegar el script del conector de Obsidian
+  ansible.builtin.copy:
+    src: sync_obsidian.py
+    dest: /usr/local/bin/sync_obsidian.py
+    backup: true
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0750"
+  tags: [obsidian_sync_config]
+
+- name: Desplegar servicio systemd (una ejecucion) del conector
+  ansible.builtin.template:
+    src: sync-obsidian.service.j2
+    dest: /etc/systemd/system/sync-obsidian.service
+    mode: "0644"
+
+- name: Desplegar timer systemd del conector (cada 15 min)
+  ansible.builtin.template:
+    src: sync-obsidian.timer.j2
+    dest: /etc/systemd/system/sync-obsidian.timer
+    mode: "0644"
+  notify: activar timer sync-obsidian
+
+- name: Avisar la clave publica que falta anadir a 192.0.2.24 (paso manual)
+  ansible.builtin.debug:
+    msg: >-
+      Clave publica del conector de Obsidian (anadir a
+      /root/.ssh/authorized_keys en 192.0.2.24 si no esta ya):
+      {{ obsidian_sync_pubkey.content | b64decode | trim }}

@@ -1,0 +1,78 @@
+---
+# Hardening reutilizable para Debian (bookworm/trixie), a partir de las
+# comprobaciones SCA de Wazuh. Solo aplica cambios seguros que no rompen el
+# acceso existente; lo que no aplica a un LXC se deja fuera.
+
+- name: Desplegar el banner de aviso legal (SSH y consola local)
+  ansible.builtin.template:
+    src: issue.net.j2
+    dest: "{{ item }}"
+    mode: "0644"
+  loop:
+    - /etc/issue.net
+    - /etc/issue
+
+- name: Desplegar el drop-in de hardening de sshd
+  ansible.builtin.template:
+    src: 99-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    mode: "0644"
+    validate: "sshd -t -f %s"
+  notify: recargar sshd
+
+# Puntos que marcaba la politica SCA propia en los CT.
+- name: sshd_config solo legible por root
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+
+# nullok deja entrar a una cuenta con contrasena vacia; quitarlo no cambia
+# el acceso. pam-auth-update respeta el fichero modificado.
+- name: PAM no acepta contrasenas vacias (quitar nullok)
+  ansible.builtin.replace:
+    path: /etc/pam.d/common-auth
+    regexp: '^(auth\s.*pam_unix\.so.*?)\s+nullok\b'
+    replace: '\1'
+
+# No instalo chrony ni timesyncd: un LXC sin privilegios no puede ajustar el
+# reloj y comparte el del host, que es quien se sincroniza.
+
+# Zona horaria local. Los cron y timers con hora fija se interpretan en esta
+# zona. cron solo lee la zona al arrancar, de ahi el reinicio.
+- name: Zona horaria Europe/Madrid
+  community.general.timezone:
+    name: "{{ zona_horaria | default('Europe/Madrid') }}"
+  notify: reiniciar cron
+  tags: [zona_horaria]
+
+- name: Purgar el cliente telnet si esta instalado (CIS 1.1.7)
+  ansible.builtin.apt:
+    name: telnet
+    state: absent
+
+- name: Permisos correctos en crontab y directorios cron (CIS 6.1.x)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - /etc/crontab
+  ignore_errors: true  # algunos hosts no tienen /etc/crontab
+
+- name: Permisos correctos en los directorios cron.* (CIS 6.1.x)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0700"
+    state: directory
+  loop:
+    - /etc/cron.hourly
+    - /etc/cron.daily
+    - /etc/cron.weekly
+    - /etc/cron.monthly
+    - /etc/cron.d
+  ignore_errors: true

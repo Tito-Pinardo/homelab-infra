@@ -1,0 +1,33 @@
+{# Generado por Ansible desde traefik_routes - no editar a mano, se sobreescribe. #}
+http:
+  routers:
+    {{ route.name }}:
+      rule: Host(`{{ route.host }}`)
+      entryPoints: [websecure]
+      service: {{ route.name }}_svc
+      tls:
+{% if route.wildcard | default(false) %}
+        domains:
+          - main: "{{ route.apex }}"
+            sans:
+              - "*.{{ route.apex }}"
+{% else %}
+        {# certResolver explicito: "{}" a secas solo reutiliza un certificado ya
+           existente por SNI, y un dominio sin wildcard nunca pediria el suyo. #}
+        certResolver: letsencrypt
+{% endif %}
+{% if route.middlewares is defined and route.middlewares | length > 0 %}
+      middlewares: {{ route.middlewares }}
+{% endif %}
+
+  services:
+    {{ route.name }}_svc:
+      loadBalancer:
+{% if route.pass_host_header is defined %}
+        passHostHeader: {{ route.pass_host_header | lower }}
+{% endif %}
+{% if route.server_transport is defined %}
+        serversTransport: {{ route.server_transport }}
+{% endif %}
+        servers:
+          - url: "{{ route.service_url }}"

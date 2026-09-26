@@ -1,0 +1,3 @@
+# Version fijada a proposito: una release rota de Qdrant no rompe un
+# despliegue futuro.
+qdrant_version: "1.19.1"

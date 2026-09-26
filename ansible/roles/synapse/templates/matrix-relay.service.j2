@@ -1,0 +1,17 @@
+[Unit]
+Description=Relay local HTTP -> Matrix E2EE para alertas de Zabbix/Wazuh
+After=matrix-synapse.service
+Requires=matrix-synapse.service
+
+[Service]
+Type=simple
+User=matrix-relay
+Group=matrix-relay
+Environment=MATRIX_RELAY_PASSWORD={{ vault_matrix_alertas_password }}
+Environment=RELAY_SHARED_SECRET={{ vault_matrix_relay_shared_secret }}
+ExecStart=/usr/bin/python3 /usr/local/bin/matrix_relay.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

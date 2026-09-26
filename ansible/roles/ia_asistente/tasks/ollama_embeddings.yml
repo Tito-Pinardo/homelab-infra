@@ -1,0 +1,88 @@
+# Ollama solo para embeddings, por CPU, en este CT. El modelo de chat vive en
+# mi PC.
+#
+# El tarball oficial trae librerias CUDA/ROCm que un CT sin GPU no usa; las
+# excluyo al extraer.
+
+- name: Crear usuario de sistema para Ollama
+  ansible.builtin.user:
+    name: ollama
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Crear directorios de Ollama
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: ollama
+    group: ollama
+    mode: "0750"
+  loop:
+    - /opt/ollama
+    - /var/lib/ollama-embeddings/models
+
+- name: Descargar el tarball de Ollama {{ ollama_version }}
+  ansible.builtin.get_url:
+    url: "https://github.com/ollama/ollama/releases/download/v{{ ollama_version }}/ollama-linux-amd64.tar.zst"
+    dest: "/tmp/ollama-{{ ollama_version }}.tar.zst"
+    mode: "0644"
+
+- name: Comprobar si el binario ya esta instalado (idempotencia)
+  ansible.builtin.stat:
+    path: /opt/ollama/bin/ollama
+  register: ollama_bin
+
+- name: Extraer Ollama a /opt/ollama, excluyendo CUDA/ROCm (CT sin GPU)
+  ansible.builtin.command:
+    cmd: >
+      tar --zstd -x
+      --exclude=lib/ollama/cuda_v12
+      --exclude=lib/ollama/cuda_v13
+      --exclude=lib/ollama/vulkan
+      -f /tmp/ollama-{{ ollama_version }}.tar.zst
+      -C /opt/ollama
+  when: not ollama_bin.stat.exists
+
+- name: Fijar propietario de /opt/ollama tras extraer
+  ansible.builtin.file:
+    path: /opt/ollama
+    owner: ollama
+    group: ollama
+    recurse: true
+  when: not ollama_bin.stat.exists
+
+- name: Desplegar unidad systemd de Ollama (embeddings, solo loopback)
+  ansible.builtin.template:
+    src: ollama-embeddings.service.j2
+    dest: /etc/systemd/system/ollama-embeddings.service
+    mode: "0644"
+  notify: reiniciar ollama-embeddings
+
+- name: Habilitar y arrancar Ollama (embeddings)
+  ansible.builtin.systemd:
+    name: ollama-embeddings
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Esperar a que Ollama responda antes de pedirle nada
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11434
+    timeout: 30
+
+- name: Comprobar si nomic-embed-text ya esta descargado
+  ansible.builtin.command:
+    cmd: /opt/ollama/bin/ollama list
+  environment:
+    OLLAMA_HOST: "127.0.0.1:11434"
+  register: ollama_list
+  changed_when: false
+
+- name: Descargar el modelo de embeddings (nomic-embed-text)
+  ansible.builtin.command:
+    cmd: /opt/ollama/bin/ollama pull nomic-embed-text
+  environment:
+    OLLAMA_HOST: "127.0.0.1:11434"
+  when: "'nomic-embed-text' not in ollama_list.stdout"

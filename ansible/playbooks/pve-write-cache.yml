@@ -1,0 +1,63 @@
+---
+# Cache de escritura (write back) en los discos del RAID1 del sistema del
+# host Proxmox, para mejorar el rendimiento de escritura de los CT.
+# El ajuste se hace persistente con una regla de udev.
+
+- name: Host Proxmox
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox al inventario de esta ejecucion
+      ansible.builtin.add_host:
+        name: pve
+        ansible_host: 192.0.2.10
+        ansible_user: root
+        groups: pve_dynamic
+
+- name: Cache de escritura persistente en los discos del sistema
+  hosts: pve_dynamic
+  gather_facts: false
+  vars:
+    # WWN de los discos (udevadm info -q property -n /dev/sdX). Se definen en
+    # el inventario privado.
+    pve_write_cache_wwn: []
+  tasks:
+    - name: Regla udev que pone write back en esos discos
+      ansible.builtin.copy:
+        dest: /etc/udev/rules.d/99-write-cache.rules
+        mode: "0644"
+        content: |
+          # Gestionado por Ansible (playbooks/pve-write-cache.yml): no editar a mano.
+          {% for wwn in pve_write_cache_wwn %}
+          ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd*[!0-9]", ENV{ID_WWN}=="{{ wwn }}", RUN+="/bin/sh -c 'echo write back | tee /sys/block/%k/device/scsi_disk/*/cache_type >/dev/null'"
+          {% endfor %}
+      register: pve_write_cache_rule
+
+    - name: Recargar udev y aplicar ya la regla (sin reiniciar)
+      ansible.builtin.shell:
+        cmd: |
+          udevadm control --reload
+          {% for wwn in pve_write_cache_wwn %}
+          udevadm trigger --action=change --subsystem-match=block --property-match=ID_WWN={{ wwn }}
+          {% endfor %}
+          udevadm settle
+      when: pve_write_cache_rule.changed
+      changed_when: true
+
+    - name: Leer la cache actual de cada disco
+      ansible.builtin.shell:
+        cmd: |
+          for w in {{ pve_write_cache_wwn | join(' ') }}; do
+            d=$(for b in /sys/block/sd*; do [ "$(udevadm info -q property -n /dev/$(basename $b) | sed -n 's/^ID_WWN=//p')" = "$w" ] && basename $b; done)
+            echo "$w $d $(cat /sys/block/$d/device/scsi_disk/*/cache_type)"
+          done
+      register: pve_write_cache_state
+      changed_when: false
+      check_mode: false
+
+    - name: Comprobar que todos estan en write back
+      ansible.builtin.assert:
+        that: pve_write_cache_state.stdout_lines | select('search', 'write back$') | list | length == pve_write_cache_wwn | length
+        fail_msg: "Algun disco no esta en write back: {{ pve_write_cache_state.stdout_lines }}"
+        success_msg: "{{ pve_write_cache_state.stdout_lines }}"
+      when: not ansible_check_mode

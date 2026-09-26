@@ -1,0 +1,23 @@
+# Generado por Ansible (roles/battlepros_status): no editar a mano, se sobrescribe.
+services:
+  battlepros-status:
+    image: ghcr.io/usuario/battlepros-status:latest
+    container_name: battlepros-status
+    env_file: stack.env
+    volumes:
+      - /opt/stacks/battlepros-status/data:/app/data
+      - /opt/stacks/battlepros-status/src:/app/src
+    ports:
+      - 3010:3000
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -qO-
+        - http://localhost:3000/health
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 15s
+networks: {}

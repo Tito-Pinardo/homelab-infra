@@ -1,0 +1,12 @@
+---
+- name: Instalar y configurar la sincronización de DNS dinámico
+  hosts: dns_sync
+  become: true
+  roles:
+    - dns_sync
+
+- name: Segundo repo bare de infra-tf (respaldo, ver runbook "Backup de infra-tf")
+  hosts: dns_sync
+  become: true
+  roles:
+    - git_backup

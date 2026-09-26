@@ -1,0 +1,12 @@
+# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault.yml
+vault_arr_gluetun_control_password: CHANGEME
+vault_arr_prowlarr_api_key: CHANGEME
+vault_arr_qbittorrent_user: CHANGEME
+vault_arr_qbittorrent_password: CHANGEME
+vault_arr_gluetun_control_user: CHANGEME
+vault_arr_radarr_api_key: CHANGEME
+vault_arr_sonarr_api_key: CHANGEME
+vault_arr_wireguard_private_key: CHANGEME
+vault_zabbix_psk: CHANGEME
+vault_wazuh_client_keys_line: CHANGEME

@@ -1,0 +1,2 @@
+# CT dockge. Ver lxc-dockge.tf.
+dockge_ssh_allowed_sources: []  # se define en el inventario privado

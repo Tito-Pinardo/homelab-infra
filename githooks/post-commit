@@ -1,0 +1,8 @@
+#!/bin/sh
+# Empuja cada commit al repositorio de respaldo y al central, en segundo
+# plano. Un fallo aqui nunca bloquea el commit; queda en un log de /tmp.
+#
+# Activar en un clon nuevo (una vez):
+#   git config core.hooksPath githooks
+( git push backup HEAD:master > /tmp/infra-tf-backup-push.log 2>&1 & )
+( git push origin HEAD:master > /tmp/infra-tf-origin-push.log 2>&1 & )

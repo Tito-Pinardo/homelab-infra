@@ -1,0 +1,10 @@
+[Unit]
+Description=Acceso restringido a Technitium
+After=nftables.service
+Before=dns.service
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/casa-technitium-guard.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target

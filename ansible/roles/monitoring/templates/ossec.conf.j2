@@ -1,0 +1,54 @@
+<ossec_config>
+  <client>
+    <server>
+      <address>192.0.2.23</address>
+      <port>1514</port>
+      <protocol>tcp</protocol>
+    </server>
+    <crypto_method>aes</crypto_method>
+  </client>
+  <active-response>
+    <disabled>yes</disabled>
+  </active-response>
+  <localfile>
+    <log_format>journald</log_format>
+    <location>journald</location>
+{% if wazuh_journald_ignore_units | default([]) | length > 0 %}
+    <!-- El filtro de journald solo sabe incluir: se excluyen estas unidades
+         con un lookahead negativo (PCRE2). ignore_if_missing deja pasar las
+         entradas sin _SYSTEMD_UNIT (kernel, auditd...). -->
+    <filter field="_SYSTEMD_UNIT" ignore_if_missing="yes">^(?!({{ wazuh_journald_ignore_units | map('regex_escape') | join('|') }})$)</filter>
+{% endif %}
+  </localfile>
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>86400</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <directories check_all="yes" report_changes="no">/etc/ssh,/etc/passwd,/etc/group,/etc/sudoers,/etc/systemd/system,/usr/local/sbin</directories>
+{% if wazuh_extra_syscheck_dirs is defined %}
+    <directories check_all="yes" report_changes="no">{{ wazuh_extra_syscheck_dirs | join(',') }}</directories>
+{% endif %}
+    <skip_nfs>yes</skip_nfs>
+    <process_priority>19</process_priority>
+  </syscheck>
+  <sca>
+    <enabled>yes</enabled>
+    <scan_on_start>yes</scan_on_start>
+    <interval>24h</interval>
+    <skip_nfs>yes</skip_nfs>
+    <policies>
+      <policy>etc/casa-esenciales.yml</policy>
+    </policies>
+  </sca>
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>1h</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>yes</hardware>
+    <os>yes</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <processes>yes</processes>
+    <ports all="no">yes</ports>
+  </wodle>
+</ossec_config>

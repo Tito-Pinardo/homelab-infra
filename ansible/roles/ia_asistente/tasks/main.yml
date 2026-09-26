@@ -1,0 +1,39 @@
+---
+- name: Paquetes base (requests para los conectores/bot, zstd para extraer el tarball de Ollama, poppler-utils para leer PDFs adjuntos de correo, pillow para los avatares de las salas, whois para el vencimiento de dominio de Argos)
+  ansible.builtin.apt:
+    name:
+      - python3-requests
+      - rsync
+      - zstd
+      - poppler-utils
+      - python3-pil
+      - whois
+      - git
+    state: present
+    update_cache: true
+
+# El modelo de embeddings se sirve desde mi PC con GPU: en la CPU del host es
+# demasiado lento. Los conectores apuntan a ia_embeddings_ollama_url.
+# ollama_embeddings.yml se conserva como alternativa por CPU.
+
+- name: Conector Obsidian (rsync + embeddings -> Qdrant)
+  ansible.builtin.include_tasks: obsidian_connector.yml
+  tags: [obsidian_sync_config]
+
+- name: Bot conversacional de Matrix
+  ansible.builtin.include_tasks: matrix_bot.yml
+  tags: [ia_bot_config]
+
+- name: Receptor del snapshot de Zabbix/Wazuh
+  ansible.builtin.include_tasks: monitoring_snapshot.yml
+
+- name: Conector de correo
+  ansible.builtin.include_tasks: correo_connector.yml
+
+- name: "Hefesto: version pinned actual de cada servicio (fuente de verdad: este repo, no se toca a mano en el CT)"
+  ansible.builtin.template:
+    src: versiones_pinned.json.j2
+    dest: /var/lib/ia-bot/versiones_pinned.json
+    owner: ia-bot
+    group: ia-bot
+    mode: "0644"

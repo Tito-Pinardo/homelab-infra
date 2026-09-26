@@ -1,0 +1,120 @@
+---
+# Stack de Caddy + Authelia + arr. Este rol solo gestiona compose.yaml y el
+# Caddyfile. Los /config de cada servicio, Authelia, los certificados de
+# Caddy y los scripts de qBittorrent/arr son estado y se restauran aparte.
+
+- name: Crear estructura de directorios del stack
+  ansible.builtin.file:
+    path: "/opt/stacks/arr/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - proxy
+    - configs
+    - scripts
+
+- name: Desplegar compose.yaml
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: /opt/stacks/arr/compose.yaml
+    mode: "0644"
+
+- name: Desplegar Caddyfile (sin las rutas huerfanas readarr/threadfin)
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /opt/stacks/arr/proxy/Caddyfile
+    # 0600: lleva una credencial. Caddy corre como root en su contenedor.
+    mode: "0600"
+  no_log: true # el diff/contenido incluye esa credencial
+  # El Caddyfile esta montado como fichero suelto: la plantilla lo reemplaza
+  # (inode nuevo) y el contenedor seguiria viendo el viejo, asi que hay que
+  # reiniciar el contenedor.
+  notify: reiniciar caddy
+  # Permite aplicar solo el proxy sin el resto del rol:
+  #   ansible-playbook playbooks/dockge-phase3.yml --tags caddy
+  tags: [caddy]
+
+- name: Crear directorios de config por servicio si no existen (primer despliegue, sin datos restaurados todavia)
+  # El propietario no es uniforme: algunos servicios corren con otro
+  # usuario, y un owner unico pisaria su propiedad en cada pasada.
+  ansible.builtin.file:
+    path: "/opt/stacks/arr/configs/{{ item.name }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+  loop:
+    - { name: radarr, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: sonarr, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: bazarr, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: prowlarr, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: jackett, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: profilarr, owner: "1000", group: "1000" }
+    - { name: qbittorrent, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: gluetun, owner: "0", group: "0" }
+    - { name: qui, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: calibre-web, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+    - { name: lazylibrarian, owner: "{{ arr_puid }}", group: "{{ arr_pgid }}" }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Crear directorios de Caddy/Authelia si no existen (primer despliegue)
+  ansible.builtin.file:
+    path: "/opt/stacks/arr/proxy/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - caddy_data
+    - caddy_config
+    - authelia
+
+# El CT es sin privilegios (idmap +100000): los discos de medios del host
+# deben pertenecer al UID/GID desplazado para que los servicios puedan
+# escribir.
+- name: Fijar propietario correcto de los discos de medios para el idmap sin privilegios de este CT
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "100568"
+    group: "100044"
+    recurse: true
+    state: directory
+  loop:
+    - /plex-server/lb1
+    - /plex-server/lb2
+    - /plex-server/lb3
+    - /plex-server/lb4
+    - /plex-server/lb5
+    - /plex-server/lb7
+    - /plex-server/lb8
+    - /plex-server/lb9
+    - /mnt/raiz5/peliculas
+    - /mnt/raiz5/series
+    - /mnt/raiz5/downloads
+    - /mnt/raiz5/libros
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10
+
+- name: Levantar el stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/stacks/arr
+    state: present
+    pull: missing
+
+# Crons de los scripts de mantenimiento de descargas. Los scripts son datos
+# que se restauran aparte; aqui solo se declara cuando se ejecutan.
+- name: Cron - limpieza de torrents seedeados (cada 15 min)
+  ansible.builtin.cron:
+    name: "arr: cleanup_seeded"
+    minute: "*/15"
+    job: "docker exec qbittorrent /bin/bash /config/scripts/cleanup_seeded.sh >> /tmp/cleanup_seeded.log 2>&1"
+
+- name: Cron - mapping de series en espanol (3am)
+  ansible.builtin.cron:
+    name: "arr: auto_spanish_mapping"
+    hour: "3"
+    minute: "0"
+    job: "python3 /opt/stacks/arr/scripts/auto_spanish_mapping.py >> /var/log/auto_spanish_mapping.log 2>&1"
+

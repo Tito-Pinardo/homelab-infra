@@ -1,0 +1,13 @@
+# Generado por Ansible (roles/seerr): no editar a mano, se sobrescribe.
+services:
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    environment:
+      - TZ=Europe/Madrid
+    volumes:
+      - /opt/stacks/seerr/config:/app/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped

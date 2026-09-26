@@ -1,0 +1,18 @@
+# Variables publicas del grupo synapse. Los secretos van cifrados en
+# vault.yml.
+
+# server_name queda grabado en cada Matrix ID: cambiarlo obliga a recrear
+# todas las cuentas. Uso un subdominio propio que coincide con el host
+# publico, asi no hace falta delegacion .well-known.
+synapse_server_name: "matrix.example.org"
+
+synapse_db_name: "synapse"
+synapse_db_user: "synapse"
+synapse_db_password: "{{ vault_synapse_db_password }}"
+
+synapse_registration_shared_secret: "{{ vault_synapse_registration_shared_secret }}"
+
+# Privado a proposito: sin federacion y con registro cerrado (las cuentas se
+# crean a mano con register_new_matrix_user).
+synapse_enable_registration: false
+synapse_federation_enabled: false

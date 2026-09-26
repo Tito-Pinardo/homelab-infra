@@ -1,0 +1,39 @@
+# Receptor de la instantanea de monitorizacion que empuja el host Proxmox
+# (scripts/sync_monitoring_snapshot.py). Usuario dedicado con SSH forzado a un
+# solo comando: escribir ese fichero.
+
+- name: Crear usuario de sistema para recibir el snapshot de monitorizacion
+  ansible.builtin.user:
+    name: monitoring-push
+    system: true
+    create_home: true
+    home: /var/lib/monitoring-push
+    # /usr/sbin/nologin no vale: sshd ejecuta el comando forzado con
+    # '$SHELL -c', y nologin lo rechaza. La restriccion real la da command= en
+    # authorized_keys.
+    shell: /bin/sh
+
+- name: Crear directorio .ssh de monitoring-push
+  ansible.builtin.file:
+    path: /var/lib/monitoring-push/.ssh
+    state: directory
+    owner: monitoring-push
+    group: monitoring-push
+    mode: "0700"
+
+- name: Permitir que otros usuarios (ia-bot) atraviesen el home para leer el snapshot
+  ansible.builtin.file:
+    path: /var/lib/monitoring-push
+    mode: "0755"
+
+- name: Autorizar la clave del host Proxmox, forzada a un unico comando
+  ansible.builtin.copy:
+    dest: /var/lib/monitoring-push/.ssh/authorized_keys
+    owner: monitoring-push
+    group: monitoring-push
+    mode: "0600"
+    # Escritura atomica: solo se sobrescribe la instantanea si llega contenido
+    # no vacio, para que una conexion sin datos no la vacie.
+    content: >
+      command="f=$(/usr/bin/mktemp) && /usr/bin/cat > $f && [ -s $f ] && /usr/bin/chmod 644 $f && /usr/bin/mv $f {{ ia_monitoring_snapshot_path }} || /usr/bin/rm -f $f",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding
+      {{ ia_monitoring_push_pubkey }}

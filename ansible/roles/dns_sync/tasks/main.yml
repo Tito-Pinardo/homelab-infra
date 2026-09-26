@@ -1,0 +1,29 @@
+---
+# Alpine: usa apk en vez de apt. La plantilla de Proxmox no trae sshd ni
+# python3, asi que ambos se instalan a mano con pct exec antes de que
+# Ansible pueda conectar. crond viene activo de serie.
+
+- name: Instalar bash, curl, jq y certificados (Alpine no trae nada de esto)
+  community.general.apk:
+    name:
+      - bash
+      - curl
+      - jq
+      - ca-certificates
+    update_cache: true
+    state: present
+
+- name: Desplegar el script consolidado de sincronizacion DNS
+  ansible.builtin.template:
+    src: dns-sync.sh.j2
+    dest: /usr/local/bin/dns-sync.sh
+    mode: "0700"
+    owner: root
+    group: root
+
+- name: Programar la ejecucion cada 5 minutos (crond ya viene activo en Alpine)
+  ansible.builtin.cron:
+    name: "sincronizar DNS dinamico con Cloudflare"
+    minute: "*/5"
+    job: "/usr/local/bin/dns-sync.sh >> /var/log/dns-sync.log 2>&1"
+    user: root

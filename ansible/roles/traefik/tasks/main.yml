@@ -1,0 +1,171 @@
+---
+- name: Crear directorios de Traefik
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/traefik
+    - /etc/traefik/conf.d
+    - /etc/traefik/ssl
+    - /var/log/traefik
+
+- name: Descargar y extraer el binario de Traefik {{ traefik_version }}
+  ansible.builtin.unarchive:
+    src: "https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_amd64.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/traefik
+
+- name: Instalar el binario en /usr/bin
+  ansible.builtin.copy:
+    src: /tmp/traefik
+    dest: /usr/bin/traefik
+    mode: "0755"
+    remote_src: true
+  notify: reiniciar traefik
+
+- name: Desplegar config estática (traefik.yaml)
+  ansible.builtin.template:
+    src: traefik.yaml.j2
+    dest: /etc/traefik/traefik.yaml
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Desplegar middlewares compartidos (00_middlewares.yml)
+  ansible.builtin.template:
+    src: middlewares.yml.j2
+    dest: /etc/traefik/conf.d/00_middlewares.yml
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Desplegar transports compartidos (00_transports.yml)
+  ansible.builtin.template:
+    src: transports.yml.j2
+    dest: /etc/traefik/conf.d/00_transports.yml
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Desplegar dashboard (config dinámica de ejemplo)
+  ansible.builtin.template:
+    src: dashboard.yml.j2
+    dest: /etc/traefik/conf.d/dashboard.yml
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Desplegar un router por cada entrada de traefik_routes
+  ansible.builtin.template:
+    src: route.yml.j2
+    dest: "/etc/traefik/conf.d/{{ item.name }}.yml"
+    mode: "0644"
+  loop: "{{ traefik_routes | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    route: "{{ item }}"
+  notify: reiniciar traefik
+
+- name: Desplegar bloqueo de la pagina static de Synapse (/_matrix/static/)
+  ansible.builtin.template:
+    src: synapse-static-block.yml.j2
+    dest: /etc/traefik/conf.d/synapse-static-block.yml
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Listar ficheros de router ya presentes en conf.d
+  # Para detectar las rutas que ya no estan en traefik_routes y borrarlas:
+  # watch: true las recarga pero nunca las borra.
+  ansible.builtin.find:
+    paths: /etc/traefik/conf.d
+    patterns: "*.yml"
+    excludes: "00_middlewares.yml,00_transports.yml,dashboard.yml,synapse-static-block.yml"
+  register: traefik_existing_route_files
+
+- name: Borrar routers huerfanos (ya no estan en traefik_routes)
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ traefik_existing_route_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: (item.path | basename | regex_replace('\.yml$','')) not in (traefik_routes | default([]) | map(attribute='name') | list)
+  notify: reiniciar traefik
+
+- name: Desplegar cloudflare.env (secreto via ansible-vault; placeholder en el grupo de test)
+  ansible.builtin.template:
+    src: cloudflare.env.j2
+    dest: /etc/traefik/cloudflare.env
+    mode: "0600"
+  notify: reiniciar traefik
+
+- name: Desplegar unidad systemd
+  ansible.builtin.template:
+    src: traefik.service.j2
+    dest: /etc/systemd/system/traefik.service
+    mode: "0644"
+  notify: reiniciar traefik
+
+- name: Habilitar y arrancar Traefik
+  ansible.builtin.systemd:
+    name: traefik
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Asegurar CNAME en Cloudflare para cada ruta de example.org
+  # Crea en Cloudflare el DNS de cada ruta nueva. Se ejecuta en el nodo de
+  # control porque es una llamada a la API de Cloudflare. Solo cubre la zona
+  # principal.
+  community.general.cloudflare_dns:
+    zone: "example.org"
+    record: "{{ item.host }}"
+    type: CNAME
+    value: "example.org"
+    proxied: true
+    state: present
+    api_token: "{{ traefik_cloudflare_api_token }}"
+  delegate_to: localhost
+  loop: "{{ traefik_routes + [{'host': traefik_dashboard_host}] }}"
+  loop_control:
+    label: "{{ item.host }}"
+  when:
+    - traefik_cloudflare_api_token is defined
+    - item.host is regex('\.example\.org$')
+
+- name: Resolver zone_id de example.org en Cloudflare
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones?name=example.org"
+    headers:
+      Authorization: "Bearer {{ traefik_cloudflare_api_token }}"
+    return_content: true
+  delegate_to: localhost
+  register: cf_zone_lookup
+  when: traefik_cloudflare_api_token is defined
+
+- name: Listar en Cloudflare los CNAME gestionados por este role (content=example.org)
+  # Solo estos registros son gestionados por este rol: cualquier otro de la
+  # zona (MX, TXT, apex, CNAME manuales) no pasa el filtro y nunca se borra.
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_lookup.json.result[0].id }}/dns_records?type=CNAME&content=example.org&per_page=100"
+    headers:
+      Authorization: "Bearer {{ traefik_cloudflare_api_token }}"
+    return_content: true
+  delegate_to: localhost
+  register: cf_managed_records
+  when: traefik_cloudflare_api_token is defined
+
+- name: Borrar en Cloudflare los CNAME gestionados que ya no estan en traefik_routes
+  community.general.cloudflare_dns:
+    zone: "example.org"
+    record: "{{ item.name }}"
+    type: CNAME
+    value: "example.org"
+    state: absent
+    api_token: "{{ traefik_cloudflare_api_token }}"
+  delegate_to: localhost
+  loop: "{{ cf_managed_records.json.result | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - traefik_cloudflare_api_token is defined
+    - item.name not in ((traefik_routes | default([]) | selectattr('host', 'regex', '\.example\.org$') | map(attribute='host') | list) + [traefik_dashboard_host] + (cloudflare_protected_records | default([])))

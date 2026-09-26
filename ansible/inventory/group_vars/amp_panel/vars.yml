@@ -1,0 +1,6 @@
+# AMP. Ver lxc-amp.tf y ansible/roles/amp.
+amp_lan_subnet: "192.0.2.0/24"
+amp_panel_port: "8080"
+
+# Firewall propio del CT en Proxmox, ademas del UFW interno (dos capas).
+amp_ssh_allowed_sources: []  # se define en el inventario privado

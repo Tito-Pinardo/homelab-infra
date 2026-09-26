@@ -1,0 +1,48 @@
+[Unit]
+Description=Bot conversacional de Matrix (asistente IA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ia-bot
+Group=ia-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=MATRIX_HOMESERVER=https://matrix.example.org
+Environment=MATRIX_USER=@asistente:matrix.example.org
+Environment=MATRIX_PASSWORD={{ vault_ia_bot_matrix_password }}
+Environment=OWNER_USER_ID=@usuario:matrix.example.org
+Environment=MATRIX_ROOM_CORREO={{ ia_matrix_room_correo }}
+Environment=MATRIX_ROOM_AMP={{ ia_matrix_room_amp }}
+Environment=MATRIX_ROOM_EVENTOS={{ ia_matrix_room_eventos }}
+Environment=MATRIX_ROOM_PITIA={{ ia_matrix_room_pitia }}
+Environment=MATRIX_ROOM_MNEMOSINE={{ ia_matrix_room_mnemosine }}
+Environment=MATRIX_ROOM_ARGOS={{ ia_matrix_room_argos }}
+Environment=MATRIX_ROOM_ATLAS={{ ia_matrix_room_atlas }}
+Environment=MATRIX_ROOM_HEFESTO={{ ia_matrix_room_hefesto }}
+Environment=MATRIX_ROOM_HIPNOS={{ ia_matrix_room_hipnos }}
+Environment=MATRIX_ROOM_NEMESIS={{ ia_matrix_room_nemesis }}
+Environment=MATRIX_ROOM_JANO={{ ia_matrix_room_jano }}
+Environment=MATRIX_ROOM_DEMETER={{ ia_matrix_room_demeter }}
+Environment=MIKROTIK_HOST={{ ia_mikrotik_host }}
+Environment=MIKROTIK_USER={{ ia_mikrotik_user }}
+Environment=MIKROTIK_PASSWORD={{ vault_mikrotik_password }}
+Environment=LLM_URL={{ ia_chat_ollama_url }}
+Environment=LLM_MODEL={{ ia_chat_model }}
+Environment=LLM_NUM_CTX={{ ia_chat_num_ctx | default(8192) }}
+Environment=EMBED_URL={{ ia_embeddings_ollama_url }}
+Environment=EMBED_MODEL={{ ia_embeddings_model }}
+Environment=QDRANT_URL={{ ia_qdrant_url }}
+Environment=QDRANT_API_KEY={{ vault_qdrant_api_key }}
+Environment=AMP_USERNAME={{ vault_amp_username | default('') }}
+Environment=AMP_PASSWORD={{ vault_amp_password | default('') }}
+Environment=AMP_TOTP_SECRET={{ vault_amp_totp_secret | default('') }}
+Environment=GOOGLE_CALENDAR_CLIENT_ID={{ ia_google_calendar_client_id }}
+Environment=GOOGLE_CALENDAR_CLIENT_SECRET={{ vault_google_calendar_client_secret }}
+Environment=GOOGLE_CALENDAR_ID={{ ia_google_calendar_id }}
+ExecStart=/usr/bin/python3 /usr/local/bin/ia_bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

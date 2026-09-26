@@ -1,0 +1,29 @@
+# Gestionado por Ansible (roles/hardening): no editar a mano.
+# Subconjunto seguro del benchmark CIS para Debian que no rompe el acceso por
+# clave que usa la automatizacion.
+MaxAuthTries 4
+ClientAliveInterval 15
+ClientAliveCountMax 3
+LoginGraceTime 60
+DisableForwarding yes
+MaxStartups 10:30:60
+Banner /etc/issue.net
+# Solo MAC SHA-2, como exige la politica SCA propia.
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+{% if hardening_forwarding_sources | default([]) | length > 0 %}
+
+# Excepcion a DisableForwarding para VS Code Remote-SSH: solo el usuario
+# agent, solo desde hardening_forwarding_sources, solo reenvio local (-L) y
+# solo hacia localhost. Todo lo demas sigue con DisableForwarding yes.
+Match User agent Address {{ hardening_forwarding_sources | join(",") }}
+    DisableForwarding no
+    AllowTcpForwarding local
+    PermitOpen localhost:* 127.0.0.1:*
+    PermitListen none
+    AllowStreamLocalForwarding no
+    AllowAgentForwarding no
+    X11Forwarding no
+# Cierra el Match: este drop-in se incluye al principio de sshd_config y sin
+# esto el resto de la configuracion quedaria dentro del bloque.
+Match all
+{% endif %}

@@ -1,0 +1,136 @@
+---
+# Requiere haber ejecutado scripts/register_monitoring.py para este host,
+# que genera vault_zabbix_psk y vault_wazuh_client_keys_line en el vault del
+# grupo.
+#
+# Wazuh no tiene paquete para Alpine: en esos hosts solo se instala Zabbix.
+
+- name: Instalar zabbix-agent2 (Debian trixie - mismo .deb pinneado que el resto del fleet)
+  # El .deb fijado esta compilado para Debian 13; los hosts con Debian 12
+  # van por una rama aparte.
+  when: ansible_pkg_mgr == 'apt' and ansible_distribution_release == 'trixie'
+  block:
+    - name: Copiar el .deb de zabbix-agent2
+      ansible.builtin.copy:
+        src: zabbix-agent2.deb
+        dest: /tmp/zabbix-agent2.deb
+        mode: "0644"
+
+    - name: Instalar zabbix-agent2 (apt resuelve dependencias del .deb local)
+      ansible.builtin.apt:
+        deb: /tmp/zabbix-agent2.deb
+
+- name: Instalar zabbix-agent2 (Debian bookworm - via repo oficial de Zabbix, build correcto para libc6 2.36)
+  when: ansible_pkg_mgr == 'apt' and ansible_distribution_release == 'bookworm'
+  block:
+    - name: Descargar zabbix-release (anade el repo apt + la clave GPG)
+      ansible.builtin.get_url:
+        url: "https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian12_all.deb"
+        dest: /tmp/zabbix-release.deb
+        mode: "0644"
+
+    - name: Instalar zabbix-release
+      ansible.builtin.apt:
+        deb: /tmp/zabbix-release.deb
+
+    - name: Instalar zabbix-agent2 desde el repo oficial
+      ansible.builtin.apt:
+        name: zabbix-agent2
+        state: present
+        update_cache: true
+
+- name: Instalar zabbix-agent2 (Alpine - paquete nativo apk)
+  when: ansible_pkg_mgr == 'apk'
+  community.general.apk:
+    name: zabbix-agent2
+    update_cache: true
+    state: present
+
+- name: Escribir la clave PSK de Zabbix
+  ansible.builtin.copy:
+    content: "{{ vault_zabbix_psk }}"
+    dest: /etc/zabbix/casa.psk
+    owner: zabbix
+    group: zabbix
+    mode: "0640"
+  notify: reiniciar zabbix-agent2
+
+- name: Desplegar zabbix_agent2.conf (misma ruta en Debian y Alpine)
+  ansible.builtin.template:
+    src: zabbix_agent2.conf.j2
+    dest: /etc/zabbix/zabbix_agent2.conf
+    mode: "0644"
+  notify: reiniciar zabbix-agent2
+
+- name: Habilitar y arrancar zabbix-agent2
+  ansible.builtin.service:
+    name: zabbix-agent2
+    enabled: true
+    state: started
+
+- name: Instalar y configurar Wazuh (solo Debian, sin soporte Alpine/musl)
+  when: ansible_pkg_mgr == 'apt'
+  block:
+    - name: Descargar el .deb de wazuh-agent (misma version 4.14.7-1 que el fleet)
+      ansible.builtin.get_url:
+        url: https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.14.7-1_amd64.deb
+        dest: /tmp/wazuh-agent.deb
+        mode: "0644"
+
+    - name: Instalar wazuh-agent
+      ansible.builtin.apt:
+        deb: /tmp/wazuh-agent.deb
+
+    - name: Escribir client.keys de Wazuh (identidad ya registrada en el manager)
+      ansible.builtin.copy:
+        content: "{{ vault_wazuh_client_keys_line }}\n"
+        dest: /var/ossec/etc/client.keys
+        owner: wazuh
+        group: wazuh
+        mode: "0640"
+      notify: reiniciar wazuh-agent
+
+    - name: Desplegar ossec.conf (mismo patron que el resto del fleet)
+      ansible.builtin.template:
+        src: ossec.conf.j2
+        dest: /var/ossec/etc/ossec.conf
+        owner: wazuh
+        group: wazuh
+        mode: "0640"
+      notify: reiniciar wazuh-agent
+
+    # ossec.conf carga la politica SCA propia; aqui la despliego en cada CT. Es
+    # una politica local, asi que sca.remote_commands=0 no la bloquea.
+    - name: Script de comprobaciones de la politica SCA casa-esenciales (solo lectura)
+      ansible.builtin.copy:
+        src: casa-seguridad-check.py
+        dest: /usr/local/sbin/casa-seguridad-check.py
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Politica SCA casa-esenciales
+      ansible.builtin.copy:
+        src: casa-esenciales.yml
+        dest: /var/ossec/etc/casa-esenciales.yml
+        owner: root
+        group: wazuh
+        mode: "0640"
+      notify: reiniciar wazuh-agent
+
+    - name: El manager no puede mandar comandos al agente (y el SCA lo verifica)
+      ansible.builtin.lineinfile:
+        path: /var/ossec/etc/local_internal_options.conf
+        regexp: "^{{ item | regex_escape }}="
+        line: "{{ item }}=0"
+      loop:
+        - logcollector.remote_commands
+        - wazuh_command.remote_commands
+        - sca.remote_commands
+      notify: reiniciar wazuh-agent
+
+    - name: Habilitar y arrancar wazuh-agent
+      ansible.builtin.service:
+        name: wazuh-agent
+        enabled: true
+        state: started

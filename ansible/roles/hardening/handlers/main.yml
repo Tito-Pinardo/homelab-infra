@@ -1,0 +1,13 @@
+---
+- name: recargar sshd
+  # restarted y no reloaded: en Debian 13 ssh.service se activa por socket y un
+  # reload hace que sshd intente volver a enlazar un puerto que ya tiene el
+  # socket, con lo que el servicio muere.
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+
+- name: reiniciar cron
+  ansible.builtin.systemd:
+    name: cron
+    state: restarted

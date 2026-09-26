@@ -1,0 +1,31 @@
+---
+# Firewall Proxmox propio del CT: SSH restringido, igual que el resto de la
+# flota.
+
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    dockge_fw_content: "{{ lookup('template', 'dockge.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: dockge_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10
+
+- name: Escribir el firewall propio del CT (solo 3 reglas de SSH)
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ dockge_fw_content }}"
+  when: >
+    not dockge_fw_current.content is defined or
+    (dockge_fw_current.content | default('') | b64decode) != dockge_fw_content
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10

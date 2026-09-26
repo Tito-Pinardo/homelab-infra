@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Technitium DNS Server
+  hosts: technitium
+  become: true
+  roles:
+    - technitium

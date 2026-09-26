@@ -1,0 +1,46 @@
+---
+# battlepros-status (bot de Discord). src/ y data/ se restauran aparte; este
+# rol nunca los toca.
+
+- name: Login en ghcr.io (imagen privada de battlepros-status)
+  ansible.builtin.command: >
+    docker login ghcr.io -u {{ battlepros_ghcr_user }} --password-stdin
+  args:
+    stdin: "{{ battlepros_ghcr_token }}"
+  changed_when: false
+  no_log: true
+
+- name: Crear directorio del stack
+  ansible.builtin.file:
+    path: /opt/stacks/battlepros-status
+    state: directory
+    mode: "0755"
+
+- name: Desplegar compose.yaml
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: /opt/stacks/battlepros-status/compose.yaml
+    mode: "0644"
+
+- name: Desplegar stack.env (secretos desde el vault)
+  ansible.builtin.template:
+    src: stack.env.j2
+    dest: /opt/stacks/battlepros-status/stack.env
+    mode: "0600"
+  register: battlepros_env
+
+- name: Crear directorios de datos/src si no existen (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: "/opt/stacks/battlepros-status/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - src
+
+- name: Levantar el stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/stacks/battlepros-status
+    state: present
+    pull: missing
+    recreate: "{{ 'always' if battlepros_env.changed else 'auto' }}"

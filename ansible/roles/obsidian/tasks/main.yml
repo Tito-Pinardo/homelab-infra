@@ -1,0 +1,53 @@
+---
+# Obsidian (mis notas del homelab). config/ y vault/ se restauran aparte; este
+# rol no los toca.
+
+- name: Crear directorio del stack
+  ansible.builtin.file:
+    path: /opt/stacks/obsidian
+    state: directory
+    mode: "0755"
+
+- name: Desplegar compose.yaml
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: /opt/stacks/obsidian/compose.yaml
+    mode: "0644"
+
+- name: Crear directorios de config/vault si no existen (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: "/opt/stacks/obsidian/{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "1000"
+    group: "1000"
+  loop:
+    - config
+    - vault
+
+- name: Levantar el stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/stacks/obsidian
+    state: present
+    pull: missing
+
+# Acceso de solo lectura para mantener actualizada la busqueda semantica.
+- name: Instalar rsync y su comando restringido rrsync
+  ansible.builtin.apt:
+    name: rsync
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [obsidian_sync_access]
+
+- name: Autorizar al conector solo para leer el vault desde el CT118
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/authorized_keys
+    regexp: "{{ obsidian_sync_public_key.split()[1] | regex_escape }}"
+    line: 'restrict,from="192.0.2.27",command="/usr/bin/rrsync -ro /opt/stacks/obsidian/vault" {{ obsidian_sync_public_key }}'
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  tags: [obsidian_sync_access]

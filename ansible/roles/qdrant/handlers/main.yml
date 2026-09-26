@@ -1,0 +1,6 @@
+---
+- name: reiniciar qdrant
+  ansible.builtin.systemd:
+    name: qdrant
+    state: restarted
+    daemon_reload: true

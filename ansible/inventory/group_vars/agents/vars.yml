@@ -1,0 +1,55 @@
+# CT de agentes: versiones fijadas a proposito, para que una release rota de
+# un CLI no rompa un despliegue futuro. Para actualizar, subo la version aqui
+# y vuelvo a ejecutar playbooks/agents.yml.
+#
+# Los agentes se usan con suscripcion, no con API keys: el login se hace a
+# mano una vez por CLI y el token queda en el home del usuario.
+agents_node_major: 22
+
+agents_npm_packages:
+  # Codeman: panel web con las terminales reales (tmux) de cada agente.
+  - name: aicodeman
+    version: "1.32.0"
+  - name: "@anthropic-ai/claude-code"
+    version: "2.1.278"
+  - name: "@google/gemini-cli"
+    version: "0.60.0"
+  - name: "@openai/codex"
+    version: "0.155.1"
+  - name: opencode-ai
+    version: "1.18.32"
+
+# Mismas versiones que en mi otro checkout, para que un playbook se comporte
+# igual se lance desde donde se lance.
+agents_ansible_core_version: "2.21.4"
+agents_ansible_collections:
+  - ansible.posix
+  - community.general
+  - community.proxmox
+  - community.docker
+  - community.crypto
+agents_terraform_version: "1.15.9"
+
+agents_user: agent
+agents_ui_port: 8765
+agents_ui_host: "agents.home.example"
+
+# Unico origen que puede hablar con el puerto de Codeman: el proxy de la red
+# local.
+agents_ui_proxy_source_ip: "192.0.2.24"
+
+# Codeman exige contrasena propia si no escucha solo en loopback. Queda como
+# segunda capa detras de la autenticacion del proxy.
+agents_codeman_password: "{{ vault_agents_codeman_password }}"
+
+# Agente local: OpenCode contra el modelo de chat de mi PC. Solo disponible
+# mientras el PC esta encendido.
+agents_ollama_url: "http://192.0.2.13:11434/v1"
+agents_ollama_model: "qwen3:8b"
+
+# Checkout de trabajo del repositorio para el usuario 'agent'.
+agents_infra_repo: "ssh://usuario@192.0.2.13/home/usuario/infra-tf-sync.git"
+
+# roles/hardening: origenes desde los que el usuario agent puede usar
+# reenvio local (VS Code Remote-SSH).
+hardening_forwarding_sources: []  # se define en el inventario privado

@@ -1,0 +1,20 @@
+# Estado de Terraform: contiene datos sensibles. El patron amplio tambien
+# cubre los backups numerados (terraform.tfstate.<timestamp>.backup).
+*.tfstate*
+.terraform/
+
+# Variables con credenciales: nunca a git
+*.tfvars
+!*.tfvars.example
+
+# El .terraform.lock.hcl si se versiona (fija las versiones de los providers)
+
+# okd/: binarios descargados y credenciales del cluster. Nunca a git.
+okd/
+
+# Bytecode de Python
+__pycache__/
+*.pyc
+
+# Vaults reales de Ansible: en el repositorio solo van los .example
+ansible/inventory/group_vars/**/vault*.yml

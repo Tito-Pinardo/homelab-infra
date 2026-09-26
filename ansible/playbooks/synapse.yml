@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Synapse (homeserver Matrix)
+  hosts: synapse_server
+  become: true
+  roles:
+    - synapse

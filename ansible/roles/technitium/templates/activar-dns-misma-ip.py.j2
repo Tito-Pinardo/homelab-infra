@@ -1,0 +1,15 @@
+# Activa la redireccion del DNS de la LAN hacia Technitium conservando la IP
+# del servicio. Antes de aplicar la redireccion comprueba que Technitium
+# responde correctamente; si no lo hace, no cambia nada para no dejar la red
+# sin DNS. Si la redireccion ya esta activa, no hace nada.
+canary_hostname = "{{ technitium_canary_hostname }}"
+
+
+def dns_responde(hostname):
+    """Indica si Technitium resuelve el nombre de comprobacion."""
+    ...
+
+
+def activar_redireccion():
+    """Aplica la regla de redireccion del DNS si aun no esta activa."""
+    ...

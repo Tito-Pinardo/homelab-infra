@@ -1,0 +1,3 @@
+# Origen desde el que administro por SSH. Lo usan los playbooks que tocan
+# el firewall de los CT. Se define en el inventario privado.
+admin_ssh_source: ""

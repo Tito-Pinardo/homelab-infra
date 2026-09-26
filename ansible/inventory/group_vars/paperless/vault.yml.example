@@ -1,0 +1,6 @@
+# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault.yml
+vault_paperless_db_password: CHANGEME
+vault_paperless_secret_key: CHANGEME
+vault_zabbix_psk: CHANGEME
+vault_wazuh_client_keys_line: CHANGEME

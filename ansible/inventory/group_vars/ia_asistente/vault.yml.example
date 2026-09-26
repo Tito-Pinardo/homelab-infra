@@ -1,0 +1,11 @@
+# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault.yml
+vault_amp_username: CHANGEME
+vault_amp_password: CHANGEME
+vault_amp_totp_secret: CHANGEME
+vault_ia_bot_matrix_password: CHANGEME
+vault_imap_app_password_cuenta1: CHANGEME
+vault_imap_app_password_cuenta2: CHANGEME
+vault_qdrant_api_key: CHANGEME
+vault_zabbix_psk: CHANGEME
+vault_wazuh_client_keys_line: CHANGEME

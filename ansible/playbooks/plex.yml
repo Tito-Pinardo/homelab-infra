@@ -1,0 +1,6 @@
+---
+- name: Instalar Plex Media Server + driver NVIDIA (CT 117, sin privilegios)
+  hosts: plex_media
+  become: true
+  roles:
+    - plex

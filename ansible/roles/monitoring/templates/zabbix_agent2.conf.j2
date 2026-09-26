@@ -1,0 +1,14 @@
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=10
+Server=127.0.0.1
+ServerActive=192.0.2.22:10051
+Hostname={{ inventory_hostname }}
+ListenIP=127.0.0.1
+TLSConnect=psk
+TLSAccept=psk
+TLSPSKIdentity=casa-{{ inventory_hostname }}
+TLSPSKFile=/etc/zabbix/casa.psk
+DenyKey=system.run[*]
+Timeout=10
+Include=/etc/zabbix/zabbix_agent2.d/*.conf

@@ -1,0 +1,123 @@
+# Version fijada a proposito: solo cambia cuando subo el numero.
+homepage_version: "v2.3.0"
+
+# La version de Next.js de Homepage exige Node >= 22.
+nodejs_major_version: "22"
+
+homepage_title: "Homelab"
+
+# Presentacion del panel; rutas y destinos estan en all/services.yml.
+homepage_category_order:
+  - Infraestructura
+  - Documentos y wiki
+  - Multimedia
+  - Descargas y biblioteca
+  - Automatizacion e IA
+  - Comunicacion
+  - Juegos
+  - Webs personales
+homepage_category_icons:
+  Infraestructura: mdi-server-network
+  Documentos y wiki: mdi-notebook-outline
+  Multimedia: mdi-play-circle-outline
+  Descargas y biblioteca: mdi-bookshelf
+  Automatizacion e IA: mdi-robot-outline
+  Comunicacion: mdi-message-outline
+  Juegos: mdi-gamepad-variant-outline
+  Webs personales: mdi-web
+# Homepage no necesita enlazarse a si mismo.
+homepage_hidden_services:
+  - homepage-example-org
+  - Threadfin
+homepage_service_details:
+  ai-example-org:
+    name: Asistente IA
+    description: Conversaciones y herramientas de IA
+  amp-example-org:
+    name: AMP
+    description: Consolas y servidores de juegos
+  books-example-org:
+    name: Calibre-Web
+    description: Leer y explorar la biblioteca
+  element-example-org:
+    name: Element
+    description: Conversaciones y salas de Matrix
+  lazylibrarian-example-org:
+    name: LazyLibrarian
+    description: Buscar y organizar libros
+  matrix-example-org:
+    name: Matrix
+    description: Servidor de mensajería · API
+  n8n-example-org:
+    name: n8n
+    description: Flujos y tareas automatizadas
+  overseerr-example-org:
+    name: Seerr
+    description: Solicitar películas y series
+  plex-example-org:
+    name: Plex
+    description: Tu cine, series y música
+  Proxmox:
+    name: Proxmox
+    description: Máquinas virtuales y contenedores
+  qb-example-org:
+    name: Qui
+    description: Panel alternativo de descargas
+  tautulli-example-org:
+    name: Tautulli
+    description: Actividad y reproducciones de Plex
+  example-com:
+    name: Web personal
+    description: Web personal
+  www-example-net:
+    name: BattlePros
+    description: Comunidad y estado de los juegos
+  Auth (Authelia):
+    name: Authelia
+    description: Acceso y autenticación
+  Radarr:
+    name: Radarr
+    description: Gestionar películas
+  Sonarr:
+    name: Sonarr
+    description: Gestionar series
+  Prowlarr:
+    name: Prowlarr
+    description: Indexadores y búsquedas
+  Bazarr:
+    name: Bazarr
+    description: Subtítulos para películas y series
+  Profilarr:
+    name: Profilarr
+    description: Perfiles de calidad
+  Jackett:
+    name: Jackett
+    description: Conectores de indexadores
+  qBittorrent:
+    name: qBittorrent
+    description: Descargas y colas de torrents
+  Dockge:
+    name: Dockge
+    description: Consultar stacks y contenedores Docker
+  Obsidian:
+    name: Obsidian
+    description: Documentación y procedimientos del homelab
+  Zabbix:
+    name: Zabbix
+    description: Métricas, alertas y disponibilidad
+  Wazuh:
+    name: Wazuh
+    description: Eventos y seguridad de los equipos
+  Paperless-ngx:
+    name: Paperless-ngx
+    description: Archivo documental y búsqueda OCR
+  Deméter:
+    name: Deméter
+    description: Compras y gastos leídos del correo
+  Technitium DNS:
+    icon: mdi-dns-outline
+    name: Technitium DNS
+    description: DNS, zonas y resolución local
+  OKD Console:
+    name: OKD
+    description: Consola del clúster Kubernetes

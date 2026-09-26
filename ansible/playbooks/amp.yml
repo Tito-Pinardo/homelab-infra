@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar AMP (panel de servidores de juego)
+  hosts: amp_panel
+  become: true
+  roles:
+    - amp

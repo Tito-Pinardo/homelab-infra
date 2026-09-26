@@ -1,0 +1,122 @@
+{
+  "policy": {
+    "id": "casa_esenciales",
+    "file": "casa-esenciales.yml",
+    "name": "Casa: controles esenciales verificados",
+    "description": "Complementa CIS; no certifica cumplimiento completo CIS. Controles aplicables a Proxmox y LXC."
+  },
+  "checks": [
+    {
+      "id": 100001,
+      "title": "Cuentas usan shadow",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py shadowed -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100002,
+      "title": "No existen contrasenas vacias",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py empty_passwords -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100003,
+      "title": "Solo root tiene UID 0",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py uid0 -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100004,
+      "title": "Solo root tiene GID 0",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py gid0 -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100005,
+      "title": "Permisos de shadow restringidos",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py shadow_permissions -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100006,
+      "title": "Configuracion SSH privada",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py ssh_permissions -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100007,
+      "title": "Configuracion cron privada",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py cron_permissions -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100008,
+      "title": "PAM no permite password vacio",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py pam_nullok -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100009,
+      "title": "SSH no permite root con password ni passwords vacios",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py ssh_auth -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100010,
+      "title": "Limites SSH de autenticacion",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py ssh_limits -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100011,
+      "title": "SSH usa MAC SHA2",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py ssh_macs -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100012,
+      "title": "Wazuh no ejecuta respuestas automaticas",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py active_response -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100013,
+      "title": "Comandos remotos Wazuh desactivados",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py remote_commands -> r:^PASS$"
+      ]
+    },
+    {
+      "id": 100014,
+      "title": "Integridad activa sin envio de diferencias",
+      "condition": "all",
+      "rules": [
+        "c:/usr/local/sbin/casa-seguridad-check.py fim -> r:^PASS$"
+      ]
+    }
+  ]
+}

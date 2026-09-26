@@ -1,0 +1,23 @@
+# Grupo de pruebas: traefik_cloudflare_api_token se deja sin definir a
+# proposito y cloudflare.env.j2 escribe un marcador. En un grupo real esta
+# variable va cifrada con ansible-vault.
+
+traefik_version: "3.5.3"
+traefik_acme_email: "tu@correo.com"
+traefik_dashboard_host: "traefik-test.example.org"
+# Credencial de pruebas: generar un hash propio con htpasswd. Nunca reutilizar
+# el de produccion.
+traefik_dashboard_htpasswd: "admin:CAMBIAR_POR_HASH_HTPASSWD"
+
+# Demo del mecanismo de dominios: hosts ficticios sin backend, solo para
+# probar que se genera un router por entrada.
+traefik_routes:
+  - name: demo-app-uno
+    host: "app1.demo.test"
+    service_url: "http://127.0.0.1:8081"
+    wildcard: false
+  - name: demo-app-dos
+    host: "app2.demo.test"
+    service_url: "http://127.0.0.1:8082"
+    wildcard: true
+    apex: "demo.test"
