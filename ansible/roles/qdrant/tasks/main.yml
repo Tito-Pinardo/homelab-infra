@@ -1,0 +1,57 @@
+---
+- name: Crear usuario de sistema para Qdrant
+  ansible.builtin.user:
+    name: qdrant
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Crear directorios de Qdrant
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: qdrant
+    group: qdrant
+    mode: "0750"
+  loop:
+    - /etc/qdrant
+    - /var/lib/qdrant/storage
+    - /var/lib/qdrant/snapshots
+
+- name: Descargar y extraer el binario de Qdrant {{ qdrant_version }}
+  ansible.builtin.unarchive:
+    src: "https://github.com/qdrant/qdrant/releases/download/v{{ qdrant_version }}/qdrant-x86_64-unknown-linux-gnu.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: /tmp/qdrant
+
+- name: Instalar el binario en /usr/bin
+  ansible.builtin.copy:
+    src: /tmp/qdrant
+    dest: /usr/bin/qdrant
+    mode: "0755"
+    remote_src: true
+  notify: reiniciar qdrant
+
+- name: Desplegar config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/qdrant/config.yaml
+    owner: qdrant
+    group: qdrant
+    mode: "0640"
+  notify: reiniciar qdrant
+
+- name: Desplegar unidad systemd de Qdrant
+  ansible.builtin.template:
+    src: qdrant.service.j2
+    dest: /etc/systemd/system/qdrant.service
+    mode: "0644"
+  notify: reiniciar qdrant
+
+- name: Habilitar y arrancar Qdrant
+  ansible.builtin.systemd:
+    name: qdrant
+    enabled: true
+    state: started
+    daemon_reload: true

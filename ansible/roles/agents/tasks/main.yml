@@ -1,0 +1,306 @@
+---
+# CT de control con agentes de IA y Codeman como panel. Ver lxc-agents.tf y
+# group_vars/agents/vars.yml. La autorizacion de su clave SSH en el resto de
+# la flota va aparte (playbooks/agents-access.yml) para poder revisarla y
+# revocarla sin tocar este rol.
+
+# ── Firewall Proxmox del CT (en el host, no dentro del CT) ──────────────
+# Un .fw solo con [RULES] no se aplica: hace falta [OPTIONS] con enable: 1.
+#
+# /etc/pve es pmxcfs: ni template/copy ni unsafe_writes funcionan. Lo
+# renderizo fuera y lo vuelco con 'cat >'.
+- name: Renderizar el firewall Proxmox del CT fuera de /etc/pve
+  ansible.builtin.template:
+    src: agents.fw.j2
+    dest: "/root/pve-fw-staging-{{ proxmox_vmid }}.fw"
+    mode: "0600"
+  delegate_to: 192.0.2.10
+  remote_user: root
+  become: false
+
+- name: Volcar el firewall del CT (SSH admin + Codeman solo desde Caddy)
+  ansible.builtin.shell:
+    cmd: >-
+      cmp -s /root/pve-fw-staging-{{ proxmox_vmid }}.fw /etc/pve/firewall/{{ proxmox_vmid }}.fw
+      || { cat /root/pve-fw-staging-{{ proxmox_vmid }}.fw > /etc/pve/firewall/{{ proxmox_vmid }}.fw && echo CHANGED; }
+  register: agents_fw_write
+  changed_when: "'CHANGED' in agents_fw_write.stdout"
+  delegate_to: 192.0.2.10
+  remote_user: root
+  become: false
+
+# ── Paquetes base ────────────────────────────────────────────────────────
+- name: Instalar dependencias basicas
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - git
+      - tmux
+      - unzip
+      - jq
+      - ripgrep
+      - acl # become_user a 'agent' (ficheros temporales de Ansible)
+      - sudo # become_user a 'agent' (la plantilla Debian no lo trae)
+      - pipx
+      - python3-venv
+      - openssh-client
+      - dnsutils
+      - build-essential
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Debian 13 trae Node 20 y Claude Code pide >= 22.
+- name: Crear directorio para claves GPG de apt
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Descargar la clave GPG de NodeSource
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /etc/apt/keyrings/nodesource.asc
+    mode: "0644"
+
+- name: Anadir el repositorio apt de NodeSource (Node {{ agents_node_major }})
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_{{ agents_node_major }}.x nodistro main"
+    state: present
+    filename: nodesource
+
+- name: Instalar Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+- name: Instalar Codeman y los CLI de agentes (versiones fijadas)
+  community.general.npm:
+    name: "{{ item.name }}"
+    version: "{{ item.version }}"
+    global: true
+    state: present
+  loop: "{{ agents_npm_packages }}"
+  loop_control:
+    label: "{{ item.name }}@{{ item.version }}"
+  # Sin esta variable, el postinstall de aicodeman arranca un servidor Codeman
+  # como root fuera de systemd.
+  environment:
+    CODEMAN_NO_AUTOSTART: "1"
+  notify: reiniciar codeman
+
+- name: Matar cualquier Codeman lanzado como root (postinstall de versiones anteriores)
+  ansible.builtin.command:
+    cmd: pkill -u root -f 'aicodeman/dist/index.js web'
+  register: agents_codeman_root
+  changed_when: agents_codeman_root.rc == 0
+  failed_when: agents_codeman_root.rc not in [0, 1]
+
+- name: Borrar el estado de ese Codeman de root
+  ansible.builtin.file:
+    path: /root/.codeman
+    state: absent
+
+- name: Descargar Terraform {{ agents_terraform_version }}
+  ansible.builtin.unarchive:
+    src: "https://releases.hashicorp.com/terraform/{{ agents_terraform_version }}/terraform_{{ agents_terraform_version }}_linux_amd64.zip"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [terraform]
+    creates: "/usr/local/bin/.terraform-{{ agents_terraform_version }}"
+
+- name: Marcar la version de Terraform instalada
+  ansible.builtin.file:
+    path: "/usr/local/bin/.terraform-{{ agents_terraform_version }}"
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+# ── Usuario de los agentes ───────────────────────────────────────────────
+- name: Crear el usuario '{{ agents_user }}' con su propia clave SSH
+  ansible.builtin.user:
+    name: "{{ agents_user }}"
+    shell: /bin/bash
+    create_home: true
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_comment: "agent@agents (CT {{ proxmox_vmid }})"
+
+# Alias de la ruta de mi otro equipo: las sesiones de agentes migradas desde
+# alli guardan rutas absolutas y asi siguen resolviendo al reanudarlas.
+- name: Alias /home/usuario -> /home/{{ agents_user }} (sesiones migradas del PC)
+  ansible.builtin.file:
+    src: "/home/{{ agents_user }}"
+    dest: /home/usuario
+    state: link
+
+# Mismas claves de administracion que root, para 'ssh agent@agents'.
+- name: Autorizar las claves admin tambien para '{{ agents_user }}'
+  ansible.builtin.copy:
+    src: /root/.ssh/authorized_keys
+    dest: "/home/{{ agents_user }}/.ssh/authorized_keys"
+    remote_src: true
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0600"
+
+# Hereda la confianza de host keys del nodo de control, en vez de aceptar
+# claves a ciegas la primera vez.
+- name: Copiar las host keys conocidas del homelab
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ssh/known_hosts"
+    dest: "/home/{{ agents_user }}/.ssh/known_hosts_homelab"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0644"
+
+- name: Anadir la host key del PC (repo git) a las conocidas
+  ansible.builtin.known_hosts:
+    # En su propio known_hosts: la copia de arriba lo sobrescribiria en cada
+    # pasada.
+    path: "/home/{{ agents_user }}/.ssh/known_hosts"
+    name: 192.0.2.13
+    key: "192.0.2.13 {{ lookup('file', '/etc/ssh/ssh_host_ed25519_key.pub') }}"
+
+- name: known_hosts propio del usuario (known_hosts lo crea como root)
+  ansible.builtin.file:
+    path: "/home/{{ agents_user }}/.ssh/known_hosts"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0644"
+
+- name: Configuracion SSH del usuario '{{ agents_user }}'
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: "/home/{{ agents_user }}/.ssh/config"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0600"
+
+- name: Copiar la contrasena del vault de infra-tf
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.vault-pass-infra-tf"
+    dest: "/home/{{ agents_user }}/.vault-pass-infra-tf"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Identidad git de los agentes
+  community.general.git_config:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    scope: global
+  loop:
+    - { name: user.name, value: "Agentes IA (CT {{ proxmox_vmid }})" }
+    - { name: user.email, value: "agent@agents.home.example" }
+  become: true
+  become_user: "{{ agents_user }}"
+
+# ── Ansible para el usuario 'agent' ──────────────────────────────────────
+- name: Instalar ansible-core {{ agents_ansible_core_version }} con pipx
+  community.general.pipx:
+    name: ansible-core
+    source: "ansible-core=={{ agents_ansible_core_version }}"
+    state: present
+  become: true
+  become_user: "{{ agents_user }}"
+
+# paramiko: lo necesita community.proxmox.proxmox_pct_remote (paperless).
+- name: Inyectar dependencias de las colecciones en el venv de ansible
+  community.general.pipx:
+    name: ansible-core
+    state: inject
+    inject_packages: [paramiko]
+  become: true
+  become_user: "{{ agents_user }}"
+
+- name: Instalar colecciones de Ansible
+  ansible.builtin.command:
+    cmd: "/home/{{ agents_user }}/.local/bin/ansible-galaxy collection install {{ agents_ansible_collections | join(' ') }}"
+  register: agents_galaxy
+  changed_when: "'was installed successfully' in agents_galaxy.stdout"
+  become: true
+  become_user: "{{ agents_user }}"
+
+# ── Agente local (OpenCode -> modelo de chat de mi PC) ──────────────────
+- name: Crear directorio de config de OpenCode
+  ansible.builtin.file:
+    path: "/home/{{ agents_user }}/.config/opencode"
+    state: directory
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0755"
+
+- name: Configurar OpenCode con el Ollama del PC
+  ansible.builtin.template:
+    src: opencode.json.j2
+    dest: "/home/{{ agents_user }}/.config/opencode/opencode.json"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0644"
+
+# ── Retirada de Vibe Kanban (sustituido por Codeman) ────────────────────
+# Idempotente: en un CT recreado desde cero no encuentra nada y no hace nada.
+- name: Comprobar si queda el servicio de Vibe Kanban
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vibe-kanban.service
+  register: agents_vk_unit
+
+- name: Parar y deshabilitar Vibe Kanban
+  ansible.builtin.systemd:
+    name: vibe-kanban
+    state: stopped
+    enabled: false
+  when: agents_vk_unit.stat.exists
+
+- name: Borrar la unidad, el paquete y los datos de Vibe Kanban
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/vibe-kanban.service
+    - "/home/{{ agents_user }}/.vibe-kanban"
+    - "/home/{{ agents_user }}/.local/share/vibe-kanban"
+    - /var/tmp/vibe-kanban
+    - /tmp/vibe-kanban
+  register: agents_vk_files
+
+- name: Desinstalar el paquete npm de Vibe Kanban
+  community.general.npm:
+    name: vibe-kanban
+    global: true
+    state: absent
+
+- name: Recargar systemd tras borrar la unidad de Vibe Kanban
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: agents_vk_files.changed
+
+# ── Codeman ──────────────────────────────────────────────────────────────
+- name: Secreto de Codeman (contrasena del panel)
+  ansible.builtin.copy:
+    content: "CODEMAN_PASSWORD={{ agents_codeman_password }}\n"
+    dest: /etc/codeman.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: reiniciar codeman
+
+- name: Desplegar unidad systemd de Codeman
+  ansible.builtin.template:
+    src: codeman.service.j2
+    dest: /etc/systemd/system/codeman.service
+    mode: "0644"
+  notify: reiniciar codeman
+
+- name: Habilitar y arrancar Codeman
+  ansible.builtin.systemd:
+    name: codeman
+    enabled: true
+    state: started
+    daemon_reload: true

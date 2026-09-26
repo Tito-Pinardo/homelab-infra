@@ -1,0 +1,111 @@
+---
+# Plex sin privilegios con acceso a la GPU (ver lxc-plex.tf). El passthrough
+# de dispositivos y los mount points de las bibliotecas se aplican con
+# 'pct set' en el host: la API de Proxmox los restringe a root@pam.
+#
+# El driver NVIDIA debe coincidir exactamente con la version del modulo del
+# kernel del host.
+
+- name: Instalar dependencias basicas
+  ansible.builtin.apt:
+    name: ["ca-certificates", "curl", "gnupg"]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Descargar el paquete cuda-keyring (repo NVIDIA)
+  ansible.builtin.get_url:
+    url: "https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb"
+    dest: /tmp/cuda-keyring.deb
+    mode: "0644"
+
+- name: Instalar cuda-keyring (anade el repo + la clave GPG)
+  ansible.builtin.apt:
+    deb: /tmp/cuda-keyring.deb
+
+- name: Fijar la version del driver NVIDIA (evita que apt instale una mas nueva que no coincide con el kernel del host)
+  ansible.builtin.template:
+    src: nvidia-pin.pref.j2
+    dest: /etc/apt/preferences.d/nvidia-pin
+    mode: "0644"
+
+- name: Instalar el driver NVIDIA userspace (sin Recommends - evita nvidia-kernel-dkms generico de Debian)
+  ansible.builtin.apt:
+    name:
+      - nvidia-driver-libs
+      - libnvidia-encode1
+      - nvidia-smi
+    state: present
+    install_recommends: false
+    update_cache: true
+
+- name: Instalar gnupg (hace falta para gpg --dearmor)
+  ansible.builtin.apt:
+    name: gnupg
+    state: present
+
+- name: Descargar la clave GPG del repo de Plex
+  ansible.builtin.get_url:
+    url: https://downloads.plex.tv/plex-keys/PlexSign.key
+    dest: /tmp/plex-keys.asc
+    mode: "0644"
+
+- name: Convertir la clave de Plex a formato binario (keyring)
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg /tmp/plex-keys.asc
+    creates: /usr/share/keyrings/plex-archive-keyring.gpg
+
+- name: Anadir el repositorio apt de Plex
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main"
+    state: present
+    filename: plexmediaserver
+
+- name: Instalar plexmediaserver
+  ansible.builtin.apt:
+    name: plexmediaserver
+    state: present
+    update_cache: true
+
+- name: Habilitar y arrancar Plex
+  # Estado deseado: Plex arrancado siempre.
+  ansible.builtin.systemd:
+    name: plexmediaserver
+    state: started
+    enabled: true
+
+- name: Desplegar plexupdate (actualiza a la ultima version del canal Plex Pass)
+  # El repositorio apt de Plex va por detras del canal Plex Pass, asi que uso
+  # plexupdate (github.com/mrworf/plexupdate, ver files/plexupdate/README.md)
+  # con el token que ya esta en Preferences.xml.
+  ansible.builtin.copy:
+    src: "plexupdate/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - plexupdate.sh
+    - plexupdate-core
+
+- name: Configurar plexupdate (canal Plex Pass, autoinstalar, autoborrar el .deb tras instalar)
+  ansible.builtin.copy:
+    dest: /etc/plexupdate.conf
+    content: |
+      RELEASE_TYPE="plexpass"
+      AUTOINSTALL="yes"
+      AUTODELETE="yes"
+    mode: "0644"
+
+- name: Comprobar/instalar la ultima version de Plex Pass ahora mismo
+  ansible.builtin.command:
+    cmd: /usr/local/bin/plexupdate.sh --config /etc/plexupdate.conf
+  register: plexupdate_result
+  changed_when: "'file was downloaded' in plexupdate_result.stdout or 'installed' in plexupdate_result.stdout"
+  failed_when: plexupdate_result.rc not in [0, 6]
+
+- name: Programar plexupdate semanal (domingo 5am) - mismo motivo que el resto de automatizaciones de este repo, no depender de acordarse a mano
+  ansible.builtin.cron:
+    name: "Actualizar Plex al ultimo build de Plex Pass"
+    weekday: "0"
+    hour: "5"
+    minute: "0"
+    job: "/usr/local/bin/plexupdate.sh --config /etc/plexupdate.conf >> /var/log/plexupdate.log 2>&1"

@@ -1,0 +1,17 @@
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "{{ element_homeserver_base_url }}",
+            "server_name": "{{ element_homeserver_server_name }}"
+        }{% if element_identity_server_url %},
+        "m.identity_server": {
+            "base_url": "{{ element_identity_server_url }}"
+        }{% endif %}
+
+    },
+    "brand": "{{ element_brand }}",
+    "default_theme": "{{ element_default_theme }}",
+    "disable_custom_urls": false,
+    "disable_guests": false,
+    "show_labs_settings": false
+}

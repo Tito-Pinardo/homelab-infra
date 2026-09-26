@@ -1,0 +1,22 @@
+[Unit]
+Description=Vigilar INBOX (2 cuentas, IMAP IDLE) y reindexar en Qdrant al instante (asistente IA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=obsidian-sync
+Group=obsidian-sync
+Environment=PYTHONUNBUFFERED=1
+Environment=QDRANT_API_KEY={{ vault_qdrant_api_key }}
+Environment=QDRANT_URL={{ ia_qdrant_url }}
+Environment=OLLAMA_URL={{ ia_embeddings_ollama_url }}
+Environment=EMBED_MODEL={{ ia_embeddings_model }}
+Environment=IMAP_APP_PASSWORD_CUENTA1={{ vault_imap_app_password_cuenta1 | default('') }}
+Environment=IMAP_APP_PASSWORD_CUENTA2={{ vault_imap_app_password_cuenta2 | default('') }}
+ExecStart=/usr/bin/python3 /usr/local/bin/sync_correo.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

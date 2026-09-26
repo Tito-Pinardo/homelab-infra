@@ -1,0 +1,26 @@
+---
+# Fase 1 de dockge: firewall base del CT y los servicios sin dependencias
+# con el resto del stack.
+- name: Fase 0 - firewall base del CT
+  hosts: dockge_base
+  become: true
+  roles:
+    - dockge_base
+
+- name: Fase 1 - Tautulli
+  hosts: tautulli
+  become: true
+  roles:
+    - tautulli
+
+- name: Fase 1 - Seerr
+  hosts: seerr
+  become: true
+  roles:
+    - seerr
+
+- name: Fase 1 - battlepros-status
+  hosts: battlepros_status
+  become: true
+  roles:
+    - battlepros_status

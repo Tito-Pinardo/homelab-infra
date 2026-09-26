@@ -1,0 +1,7 @@
+---
+- name: Desplegar el dashboard de servicios del homelab en OKD
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - okd_dashboard

@@ -1,0 +1,63 @@
+---
+- name: Desplegar Demeter y sus consultas locales para Hermes
+  hosts: ia_asistente
+  become: true
+  tasks:
+    - name: Preparar captura y bandeja de compras
+      ansible.builtin.include_role:
+        name: ia_asistente
+        tasks_from: demeter
+
+- name: Publicar Demeter solo en LAN detras de Authelia
+  hosts: arr_stack
+  become: true
+  tasks:
+    - name: Obtener secreto del backend sin mostrarlo
+      ansible.builtin.slurp:
+        src: /etc/demeter-proxy-token
+      delegate_to: ia-asistente
+      register: demeter_proxy_secret
+      no_log: true
+
+    - name: Crear directorio privado de configuracion
+      ansible.builtin.file:
+        path: /opt/stacks/arr/proxy/caddy_config/demeter
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Preparar ruta autenticada de Demeter
+      ansible.builtin.template:
+        src: ../roles/ia_asistente/templates/demeter.caddy.j2
+        dest: /opt/stacks/arr/proxy/caddy_config/demeter/site.caddy
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Preparar Caddyfile completo para validar antes de recargar
+      ansible.builtin.template:
+        src: ../roles/arr_stack/templates/Caddyfile.j2
+        dest: /opt/stacks/arr/proxy/caddy_config/demeter/Caddyfile.candidate
+        mode: "0600"
+
+    - name: Validar configuracion de Caddy
+      ansible.builtin.command:
+        argv: [docker, exec, caddy, caddy, validate, --config, /config/demeter/Caddyfile.candidate, --adapter, caddyfile]
+      changed_when: false
+      no_log: true
+
+    - name: Guardar configuracion validada para futuros arranques
+      ansible.builtin.copy:
+        src: /opt/stacks/arr/proxy/caddy_config/demeter/Caddyfile.candidate
+        dest: /opt/stacks/arr/proxy/Caddyfile
+        remote_src: true
+        mode: "0644"
+        backup: true
+
+    - name: Recargar Caddy sin reiniciar el stack
+      ansible.builtin.command:
+        argv: [docker, exec, caddy, caddy, reload, --config, /config/demeter/Caddyfile.candidate, --adapter, caddyfile]
+      changed_when: true
+      no_log: true

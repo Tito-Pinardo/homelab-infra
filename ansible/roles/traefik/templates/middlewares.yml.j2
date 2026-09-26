@@ -1,0 +1,43 @@
+{# Bloques compartidos referenciados desde traefik_routes (ej. sec_headers@file). #}
+http:
+  middlewares:
+    sec_headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "no-referrer-when-downgrade"
+
+    registry_buffering:
+      buffering:
+        maxRequestBodyBytes: 0
+        memRequestBodyBytes: 0
+        maxResponseBodyBytes: 0
+        memResponseBodyBytes: 0
+
+    amp_headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: false
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: "no-referrer-when-downgrade"
+
+    keycloak_headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: false
+        referrerPolicy: "no-referrer-when-downgrade"
+
+    forwarded_headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+          X-Forwarded-Port: "443"

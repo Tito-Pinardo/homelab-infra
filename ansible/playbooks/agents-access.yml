@@ -1,0 +1,124 @@
+---
+# Da al CT de agentes acceso a la flota: su clave SSH se autoriza como root
+# en cada CT del inventario y en el host Proxmox, y se permite su acceso SSH
+# en el firewall de cada CT. Va aparte del rol 'agents' para poder revocarlo
+# facilmente:
+#   ansible-playbook playbooks/agents-access.yml -e agents_access_state=absent
+#
+# Paperless queda excluido a proposito.
+
+- name: Leer la clave publica del usuario agent
+  hosts: agents
+  gather_facts: false
+  tasks:
+    - name: Leer id_ed25519.pub
+      ansible.builtin.slurp:
+        src: /home/agent/.ssh/id_ed25519.pub
+      register: agents_pubkey_raw
+
+    - name: Guardar la clave como fact compartido
+      ansible.builtin.set_fact:
+        agents_pubkey: "{{ agents_pubkey_raw.content | b64decode | trim }}"
+        agents_access_state: "{{ agents_access_state | default('present') }}"
+
+- name: Autorizar la clave de agents como root en cada CT
+  hosts: all:!agents:!paperless
+  gather_facts: false
+  become: true
+  tasks:
+    - name: authorized_keys de root
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ hostvars['agents'].agents_pubkey }}"
+        state: "{{ hostvars['agents'].agents_access_state }}"
+
+- name: Host Proxmox, repos git y firewall de cada CT
+  hosts: agents
+  gather_facts: false
+  tasks:
+    - name: authorized_keys de root en el host Proxmox
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ agents_pubkey }}"
+        state: "{{ agents_access_state }}"
+      delegate_to: 192.0.2.10
+      remote_user: root
+
+    # Solo los .fw que ya restringen SSH: anado el acceso de agents justo
+    # despues de la regla de administracion, antes del DROP.
+    - name: Buscar los .fw con la regla SSH de administracion
+      ansible.builtin.command:
+        cmd: grep -lE '^IN ACCEPT -source {{ admin_ssh_source | regex_escape }} -p tcp -dport 22( |$)' /etc/pve/firewall/ -r
+      register: agents_fw_files
+      changed_when: false
+      failed_when: agents_fw_files.rc not in [0, 1]
+      delegate_to: 192.0.2.10
+      remote_user: root
+
+    # /etc/pve es pmxcfs: lineinfile no puede (chmod/rename atomico), se
+    # genera el fichero nuevo fuera y se vuelca con 'cat >'.
+    - name: Permitir SSH desde agents en cada .fw
+      ansible.builtin.shell:
+        cmd: |
+          f='{{ item }}'
+          line='IN ACCEPT -source {{ ansible_host }} -p tcp -dport 22 # agents (CT {{ proxmox_vmid }})'
+          tmp=/root/pve-fw-agents.tmp
+          {% if agents_access_state == 'present' %}
+          grep -qxF "$line" "$f" && exit 0
+          awk -v l="$line" '{print} /^IN ACCEPT -source {{ admin_ssh_source | regex_escape }} -p tcp -dport 22( |$)/ && !d {print l; d=1}' "$f" > "$tmp"
+          {% else %}
+          grep -qxF "$line" "$f" || exit 0
+          grep -vxF "$line" "$f" > "$tmp"
+          {% endif %}
+          cat "$tmp" > "$f" && rm -f "$tmp" && echo CHANGED
+      register: agents_fw_rule
+      changed_when: "'CHANGED' in agents_fw_rule.stdout"
+      loop: "{{ agents_fw_files.stdout_lines | reject('search', '/' ~ proxmox_vmid ~ '\\.fw$') | list }}"
+      delegate_to: 192.0.2.10
+      remote_user: root
+
+    # Repositorio central: la clave solo puede usar git (git-shell).
+    - name: Autorizar la clave de agents en el PC (solo git)
+      ansible.posix.authorized_key:
+        user: usuario
+        key: "{{ agents_pubkey }}"
+        key_options: 'restrict,command="git-shell -c \"$SSH_ORIGINAL_COMMAND\""'
+        state: "{{ agents_access_state }}"
+      delegate_to: localhost
+      connection: local
+
+    # Repositorio de respaldo: el usuario git-backup ya es git-shell.
+    - name: Autorizar la clave de agents en el repo de respaldo
+      ansible.posix.authorized_key:
+        user: git-backup
+        key: "{{ agents_pubkey }}"
+        key_options: "no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding"
+        state: "{{ agents_access_state }}"
+      delegate_to: dns-sync
+
+- name: Checkout de trabajo de infra-tf para los agentes
+  hosts: agents
+  gather_facts: false
+  become: true
+  become_user: agent
+  tasks:
+    - name: Clonar infra-tf
+      ansible.builtin.git:
+        repo: "{{ agents_infra_repo }}"
+        dest: /home/agent/infra-tf
+        update: false
+      when: agents_access_state == 'present'
+
+    - name: Remoto de respaldo y hooks del repo
+      community.general.git_config:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        scope: local
+        repo: /home/agent/infra-tf
+      loop:
+        - { name: remote.backup.url, value: "ssh://git-backup@192.0.2.28/home/git-backup/infra-tf-backup.git" }
+        # Sin refspec, 'git fetch backup' solo deja FETCH_HEAD y no existe
+        # backup/master, y necesito compararlo con el checkout.
+        - { name: remote.backup.fetch, value: "+refs/heads/*:refs/remotes/backup/*" }
+        - { name: core.hooksPath, value: githooks }
+      when: agents_access_state == 'present'

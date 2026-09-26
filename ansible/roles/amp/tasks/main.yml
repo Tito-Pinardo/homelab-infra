@@ -1,0 +1,206 @@
+---
+# AMP (CubeCoders Application Management Panel).
+#
+# Este rol nunca toca /home/amp/.ampdata (usuarios, 2FA, instancias) ni los
+# datos de los juegos: son estado de AMP y se restauran aparte.
+
+- name: Instalar dependencias basicas
+  ansible.builtin.apt:
+    name: ["ca-certificates", "curl", "gnupg", "ufw"]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Crear directorio para claves GPG de apt
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Descargar la clave GPG oficial de Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Anadir el repositorio apt de Docker
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Instalar Docker Engine + plugin compose
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Habilitar y arrancar Docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Copiar la clave GPG del repo de CubeCoders (cdn-repo.c7rs.com)
+  ansible.builtin.copy:
+    src: cdn-repo.c7rs.com.gpg
+    dest: /usr/share/keyrings/cdn-repo.c7rs.com.gpg
+    mode: "0644"
+
+- name: Anadir el repositorio apt de CubeCoders (ampinstmgr)
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/cdn-repo.c7rs.com.gpg] https://cdn-repo.c7rs.com/ debian/"
+    state: present
+    filename: cdn-repo.c7rs.com
+
+- name: Instalar ampinstmgr (crea el usuario 'amp', /opt/cubecoders/amp, y las unidades systemd base)
+  ansible.builtin.apt:
+    name: ampinstmgr
+    state: present
+    update_cache: true
+
+- name: Crear directorio de override de ampinstmgr.service
+  ansible.builtin.file:
+    path: /etc/systemd/system/ampinstmgr.service.d
+    state: directory
+    mode: "0755"
+
+- name: Override de systemd para ampinstmgr.service (TimeoutStartSec=600)
+  # Mitigacion de un fallo conocido: al arrancar, ampinstmgr descarga las
+  # imagenes base de cada instancia con Start on Boot y tras un reinicio puede
+  # superar el timeout de systemd. El pre-pull de imagenes evita la descarga
+  # durante el arranque y aqui amplio el timeout.
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ampinstmgr.service.d/override.conf
+    content: |
+      [Service]
+      TimeoutStartSec=600
+    mode: "0644"
+  notify: recargar systemd
+
+- name: Pre-descargar las imagenes base de AMP (evita el 'docker pull' en el primer arranque real)
+  ansible.builtin.command: docker pull docker.io/cubecoders/{{ item }}
+  loop:
+    - "ampbase:debian"
+    - "ampbase:debian-12"
+    - "ampbase:java"
+    - "ampbase:java-25"
+    - "ampbase:java-lts"
+  register: amp_image_pull
+  changed_when: "'Downloaded newer image' in amp_image_pull.stdout"
+
+- name: Crear el usuario 'amp' (el paquete ampinstmgr NO lo crea solo - normalmente lo hace al crear la primera instancia, que aqui no aplica porque los datos se restauran desde el CT108)
+  ansible.builtin.user:
+    name: amp
+    shell: /bin/bash
+    create_home: true
+    home: /home/amp
+    groups: [docker, tty]
+    append: true
+
+- name: Crear /home/amp si no existe (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: /home/amp
+    state: directory
+    owner: amp
+    group: amp
+    mode: "0750"
+
+- name: Desplegar before.rules de UFW (SSH+panel restringidos a LAN, delante de las reglas que AMP sincroniza solo)
+  ansible.builtin.template:
+    src: ufw-before.rules.j2
+    dest: /etc/ufw/before.rules
+    mode: "0640"
+  notify: recargar ufw
+
+- name: Desplegar before6.rules de UFW (misma restriccion, IPv6)
+  ansible.builtin.template:
+    src: ufw-before6.rules.j2
+    dest: /etc/ufw/before6.rules
+    mode: "0640"
+  notify: recargar ufw
+
+- name: Fijar politicas por defecto de UFW (deny incoming/routed, allow outgoing)
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+
+- name: Activar logging de UFW (low, igual que el CT108 original)
+  community.general.ufw:
+    logging: low
+
+- name: Permitir SSH desde la LAN
+  community.general.ufw:
+    rule: allow
+    direction: in
+    src: "{{ amp_lan_subnet }}"
+    port: "22"
+    proto: tcp
+    comment: "Casa SSH LAN"
+
+- name: Permitir el panel (8080) desde la LAN
+  community.general.ufw:
+    rule: allow
+    direction: in
+    src: "{{ amp_lan_subnet }}"
+    port: "{{ amp_panel_port }}"
+    proto: tcp
+    comment: "Casa AMP panel LAN"
+
+- name: Habilitar UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Habilitar y arrancar Docker antes que ampinstmgr (por si el orden de boot importa)
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+
+- name: Habilitar ampinstmgr.service (arranque real se deja para despues de restaurar /home/amp/.ampdata)
+  ansible.builtin.systemd:
+    name: ampinstmgr.service
+    enabled: true
+    daemon_reload: true
+
+- name: Habilitar y arrancar el temporizador de sincronizacion de firewall de AMP (cada 5 min)
+  ansible.builtin.systemd:
+    name: ampfirewall.timer
+    enabled: true
+    state: started
+
+- name: Renderizar el firewall propio del CT en Proxmox (SSH restringido, resto sin tocar - UFW ya filtra el resto dentro del CT)
+  ansible.builtin.set_fact:
+    amp_fw_content: "{{ lookup('template', 'amp.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: amp_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10
+
+- name: Escribir el firewall propio del CT (solo 3 reglas de SSH)
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ amp_fw_content }}"
+  when: >
+    not amp_fw_current.content is defined or
+    (amp_fw_current.content | default('') | b64decode) != amp_fw_content
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10

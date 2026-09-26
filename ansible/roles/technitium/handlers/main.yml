@@ -1,0 +1,6 @@
+---
+- name: reiniciar dns.service
+  ansible.builtin.systemd:
+    name: dns.service
+    state: restarted
+    daemon_reload: true

@@ -1,0 +1,8 @@
+---
+# CT de agentes: CLI de agentes, Codeman y herramientas de IaC. Despues toca
+# playbooks/agents-access.yml y el login manual de cada CLI.
+- name: Instalar y configurar el CT de agentes IA
+  hosts: agents
+  become: true
+  roles:
+    - agents

@@ -1,0 +1,19 @@
+# Element Web usa hash-routing (#/...), asi que no hace falta el
+# try_files ... /index.html de otras SPA.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    root /opt/element;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~* \.(js|css|svg|png|jpg|jpeg|gif|ico|woff2?)$ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+}

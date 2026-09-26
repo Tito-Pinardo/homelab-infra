@@ -1,0 +1,33 @@
+# Gestionado por Ansible (roles/synapse): se sobrescribe en cada ejecucion.
+# El resto de homeserver.yaml (signing key, secretos) lo genera el paquete al
+# instalar y aqui no se toca.
+
+database:
+  name: psycopg2
+  args:
+    user: {{ synapse_db_user }}
+    password: "{{ synapse_db_password }}"
+    database: {{ synapse_db_name }}
+    host: 127.0.0.1
+    cp_min: 5
+    cp_max: 10
+
+# Detras de Traefik: HTTP en localhost y x_forwarded para ver el esquema y
+# la IP reales.
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client]
+        compress: false
+
+enable_registration: {{ synapse_enable_registration | lower }}
+registration_shared_secret: "{{ synapse_registration_shared_secret }}"
+
+# Privado: sin federacion. Con la lista vacia se rechaza cualquier otro
+# servidor.
+federation_domain_whitelist: []
+
+report_stats: false

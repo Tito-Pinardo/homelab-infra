@@ -1,0 +1,9 @@
+---
+# Instala o actualiza los agentes de Zabbix y Wazuh en los CT. Antes hay que
+# registrar cada host con scripts/register_monitoring.py, que genera sus
+# credenciales en el vault del grupo.
+- name: Instalar agentes de monitorizacion (Zabbix + Wazuh)
+  hosts: traefik_prod:element_web:synapse_server:homepage_web:dns_sync:n8n:plex_media:qdrant:ia_asistente:paperless:technitium:amp_panel:dockge_base
+  become: true
+  roles:
+    - monitoring

@@ -1,0 +1,39 @@
+/* Homelab — fondo local, interfaz adaptable y navegación por teclado. */
+body { background: #080f1b !important; }
+#background { background-position: center 40% !important; background-size: cover !important; }
+#page_wrapper { background: linear-gradient(180deg, rgba(5,13,24,.12) 0, rgba(5,13,24,.48) 340px, rgba(5,13,24,.93) 760px); }
+#inner_wrapper { max-width: 1440px; margin-inline: auto; }
+#information-widgets { padding: 56px 12px 34px; margin-bottom: 0 !important; }
+#widgets-wrap { align-items: end; gap: 20px; }
+.information-widget-greeting { flex-basis: 100%; }
+.information-widget-greeting::before { content: "HOMELAB"; display: block; position: absolute; margin-top: -28px; font-size: 11px; font-weight: 650; letter-spacing: .24em; color: #a4d7df; }
+.information-widget-greeting span { font-size: clamp(2rem, 4vw, 3.5rem) !important; letter-spacing: -.045em; font-weight: 650; line-height: 1.15; color: #f5f8fc !important; }
+#information-widgets-right { flex-basis: 100% !important; justify-content: space-between !important; gap: 24px; }
+#information-widgets input { border: 1px solid #91a9bd55; border-radius: 10px; background: #0b192cc9; min-height: 40px; }
+#tabs { margin-top: 8px !important; margin-bottom: 10px !important; }
+#tabs [role="tablist"] { justify-content: flex-start; gap: 8px; border-bottom: 1px solid #bfd6e524; padding-bottom: 12px; }
+#tabs button { border-radius: 9px; padding: 10px 22px; font-size: 13px; font-weight: 600; }
+#tabs button[aria-selected="true"] { background: #d8eef0 !important; color: #0c2938 !important; box-shadow: 0 4px 18px #0002; }
+.services-group { margin-top: 12px; margin-bottom: 12px; }
+.service-group-name { font-size: 14px !important; font-weight: 600 !important; letter-spacing: .035em; color: #e1eaf2 !important; }
+.service-group-icon { opacity: .8; width: 20px !important; height: 20px !important; }
+.service-card { border: 1px solid #aec7df24; border-radius: 13px !important; background: rgba(16,30,47,.82) !important; box-shadow: 0 5px 22px #0002 !important; backdrop-filter: blur(18px); transition: border-color .18s ease, background .18s ease, transform .18s ease !important; }
+.service-card:hover { border-color: #87cbd0aa; background: #20394bea !important; transform: translateY(-2px); }
+.service-title { min-height: 86px; align-items: center; padding: 4px; }
+.service-icon { margin-inline: 4px; }
+.service-name { font-size: 14px !important; font-weight: 600; color: #edf4fb; }
+.service-description { margin-top: 5px; line-height: 1.5; color: #bac9d8 !important; font-size: 11px !important; font-weight: 400 !important; }
+.bookmark { border: 1px solid #c4dce52b; border-radius: 10px; background: #102235b8 !important; backdrop-filter: blur(14px); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #8fe2e6 !important; outline-offset: 3px; }
+#footer { padding-top: 14px !important; padding-bottom: 18px !important; }
+@media (max-width: 640px) {
+  #information-widgets { padding: 48px 4px 12px; }
+  #information-widgets-right { gap: 8px; }
+  #tabs button { padding: 9px 15px; }
+  .service-title { min-height: 76px; }
+  .service-description { font-size: 12px !important; }
+}
+@media (prefers-reduced-motion: reduce) { .service-card { transition: none !important; transform: none !important; } }
+
+#myTab { display: flex !important; flex-direction: row !important; gap: 6px; padding: 4px; border: 1px solid #bfd6e524; border-radius: 12px; background: #13283a99; backdrop-filter: blur(18px); }
+#myTab > * { flex: 1; }

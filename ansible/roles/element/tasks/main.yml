@@ -1,0 +1,65 @@
+---
+- name: Actualizar caché de apt e instalar nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Descargar el release estático de Element Web {{ element_web_version }}
+  ansible.builtin.get_url:
+    url: "https://github.com/element-hq/element-web/releases/download/v{{ element_web_version }}/element-v{{ element_web_version }}.tar.gz"
+    dest: "/tmp/element-v{{ element_web_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extraer el release en /opt (una carpeta por versión, no se pisan entre sí)
+  ansible.builtin.unarchive:
+    src: "/tmp/element-v{{ element_web_version }}.tar.gz"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/element-v{{ element_web_version }}"
+    owner: www-data
+    group: www-data
+
+- name: Apuntar /opt/element a la versión activa (symlink -> cambiar de versión es solo re-apuntar)
+  ansible.builtin.file:
+    src: "/opt/element-v{{ element_web_version }}"
+    dest: /opt/element
+    state: link
+    owner: www-data
+    group: www-data
+    force: true
+
+- name: Desplegar config.json (homeserver, tema, marca)
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: /opt/element/config.json
+    owner: www-data
+    group: www-data
+    mode: "0644"
+
+- name: Desplegar vhost de nginx para Element
+  ansible.builtin.template:
+    src: nginx-element.conf.j2
+    dest: /etc/nginx/sites-available/element.conf
+    mode: "0644"
+  notify: recargar nginx
+
+- name: Habilitar el vhost de Element (symlink en sites-enabled)
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/element.conf
+    dest: /etc/nginx/sites-enabled/element.conf
+    state: link
+  notify: recargar nginx
+
+- name: Deshabilitar el vhost "default" de nginx (solo queremos servir Element)
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: recargar nginx
+
+- name: Habilitar y arrancar nginx
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started

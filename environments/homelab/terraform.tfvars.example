@@ -1,0 +1,4 @@
+# Copia este fichero como terraform.tfvars y rellena el valor real.
+# terraform.tfvars esta en .gitignore: nunca subas el secreto a git.
+
+proxmox_api_token = "usuario@pve!token=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"

@@ -1,0 +1,30 @@
+# Paperless-ngx: documentos personales. Ver lxc-paperless.tf.
+#
+# ansible_become: false a proposito: se conecta como root a traves del host
+# Proxmox con pct exec, y become no esta probado con ese connection plugin.
+ansible_become: false
+# Valores necesarios para restaurar la base de datos sin romper nada.
+paperless_ocr_language: spa
+paperless_ocr_languages: "spa+eng"
+paperless_time_zone: "Europe/Madrid"
+paperless_url: "https://paperless.home.example"
+paperless_allowed_hosts: "paperless.home.example,192.0.2.25"
+paperless_csrf_trusted_origins: "https://paperless.home.example"
+paperless_task_workers: 1
+paperless_threads_per_worker: 2
+
+# IA nativa de Paperless: la configuracion vive en la base de datos. Estos
+# valores son referencia para poder reconfigurarla a mano.
+paperless_llm_backend: ollama
+paperless_llm_endpoint: "http://192.0.2.13:11434"
+paperless_llm_model: "qwen2.5vl:7b"
+paperless_llm_embedding_backend: ollama
+paperless_llm_embedding_endpoint: "http://192.0.2.13:11434"
+paperless_llm_embedding_model: "nomic-embed-text"
+paperless_llm_output_language: spa
+
+# Firewall propio del CT (ver playbooks/paperless.yml).
+paperless_firewall_allowed_tcp: []  # se define en el inventario privado
+
+db_password: "{{ vault_paperless_db_password }}"
+secret_key: "{{ vault_paperless_secret_key }}"

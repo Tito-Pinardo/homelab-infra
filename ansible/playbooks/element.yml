@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Element Web
+  hosts: element_web
+  become: true
+  roles:
+    - element

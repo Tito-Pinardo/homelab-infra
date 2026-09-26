@@ -1,0 +1,303 @@
+# Generado por Ansible (roles/arr_stack): no editar a mano, se sobrescribe.
+services:
+  # ── PROXY + AUTH ───────────────────────────────────────────
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    network_mode: host
+    volumes:
+      - /opt/stacks/arr/proxy/Caddyfile:/etc/caddy/Caddyfile
+      - /opt/stacks/arr/proxy/caddy_data:/data
+      - /opt/stacks/arr/proxy/caddy_config:/config
+    restart: unless-stopped
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    environment:
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/proxy/authelia:/config
+    ports:
+      - 9091:9091
+    restart: unless-stopped
+  # ── ARR STACK ──────────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/radarr:/config
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+      - /mnt/raiz5/downloads:/mnt/raiz5/downloads
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/sonarr:/config
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+      - /mnt/raiz5/series:/mnt/raiz5/series
+      - /mnt/raiz5/downloads:/mnt/raiz5/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/prowlarr:/config
+    restart: unless-stopped
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/bazarr:/config
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+      - /mnt/raiz5/series:/mnt/raiz5/series
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+  profilarr:
+    image: santiagosayshey/profilarr:latest
+    container_name: profilarr
+    environment:
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/profilarr:/config
+    ports:
+      - 6868:6868
+    restart: unless-stopped
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+      - AUTO_UPDATE=true
+    volumes:
+      - /opt/stacks/arr/configs/jackett:/config
+    restart: unless-stopped
+  flaresolverr:
+    image: ghcr.io/thephaseless/byparr:latest
+    container_name: flaresolverr
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=info
+      - TZ={{ arr_tz }}
+    restart: unless-stopped
+    init: true
+    # /health abre un navegador de verdad, por eso el intervalo es largo.
+    # start_interval hace que al arrancar pruebe cada pocos segundos hasta el
+    # primer OK, para que update-containers.yml no falle esperando.
+    healthcheck:
+      test: ["CMD-SHELL", 'curl "http://127.0.0.1:$${PORT}/health"']
+      interval: 900s
+      timeout: 90s
+      start_period: 150s
+      start_interval: 5s
+      retries: 3
+  unpackerr:
+    image: golift/unpackerr
+    container_name: unpackerr
+    user: "{{ arr_puid }}:{{ arr_pgid }}"
+    environment:
+      - TZ={{ arr_tz }}
+      - UN_DEBUG=false
+      - UN_LOG_FILE=
+      - UN_LOG_FILES=10
+      - UN_LOG_FILE_MB=10
+      - UN_INTERVAL=2m
+      - UN_START_DELAY=1m
+      - UN_RETRY_DELAY=5m
+      - UN_MAX_RETRIES=3
+      - UN_PARALLEL=1
+      - UN_FILE_MODE=0664
+      - UN_DIR_MODE=0775
+      # Sonarr
+      - UN_SONARR_0_URL=http://sonarr:8989
+      - UN_SONARR_0_API_KEY={{ arr_sonarr_api_key }}
+      - UN_SONARR_0_PATHS_0=/mnt/raiz5/downloads/series
+      - UN_SONARR_0_PROTOCOLS=torrent
+      - UN_SONARR_0_TIMEOUT=10s
+      - UN_SONARR_0_DELETE_ORIG=false
+      - UN_SONARR_0_DELETE_DELAY=5m
+      # Radarr
+      - UN_RADARR_0_URL=http://radarr:7878
+      - UN_RADARR_0_API_KEY={{ arr_radarr_api_key }}
+      - UN_RADARR_0_PATHS_0=/mnt/raiz5/downloads/peliculas
+      - UN_RADARR_0_PROTOCOLS=torrent
+      - UN_RADARR_0_TIMEOUT=10s
+      - UN_RADARR_0_DELETE_ORIG=true
+      - UN_RADARR_0_DELETE_DELAY=5m
+    volumes:
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+      - /mnt/raiz5/downloads:/mnt/raiz5/downloads
+    restart: unless-stopped
+  # ── VPN (Gluetun, WireGuard + reenvio de puertos) ──
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8080:8080 # qBittorrent WebUI
+      - 6881:6881  # BitTorrent TCP
+      - 6881:6881/udp # BitTorrent UDP
+      - 7476:7476 # Qui WebUI (shares network with qbittorrent)
+      - 9117:9117 # Jackett
+      - 9696:9696 # Prowlarr
+      - 8191:8191 # FlareSolverr
+      - 8000:8000 # Gluetun control API (used by gluetun-qb-sync)
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY={{ arr_wireguard_private_key }}
+      - WIREGUARD_ADDRESSES=198.51.100.50/32
+      - SERVER_COUNTRIES={{ arr_vpn_server_countries }}
+      - VPN_PORT_FORWARDING=on
+      - VPN_PORT_FORWARDING_PROVIDER=protonvpn
+      - PORT_FORWARD_ONLY=on
+      - TZ={{ arr_tz }}
+      - FIREWALL_OUTBOUND_SUBNETS={{ arr_gluetun_outbound_subnets }}
+      - FIREWALL_INPUT_PORTS={{ arr_gluetun_input_ports }}
+      - HTTP_CONTROL_SERVER_ADDRESS=:8000
+      - VPN_INTERFACE_MTU=1280
+      - HEALTH_TARGET_ADDRESSES=1.1.1.1:443
+      - DNS_UPSTREAM_RESOLVER_TYPE=plain
+      - DNS_UPSTREAM_PLAIN_ADDRESSES=1.1.1.1:53,8.8.8.8:53
+    volumes:
+      - /opt/stacks/arr/configs/gluetun:/gluetun
+    restart: unless-stopped
+  # ── QBITTORRENT (through gluetun) ──────────────────────────
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+      - WEBUI_PORT=8080
+    volumes:
+      - /opt/stacks/arr/configs/qbittorrent:/config
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+      - /mnt/raiz5/series:/mnt/raiz5/series
+      - /mnt/raiz5/downloads:/mnt/raiz5/downloads
+      - /mnt/raiz5/libros:/mnt/raiz5/libros
+    restart: unless-stopped
+  # ── PORT SYNC (mantiene el puerto de qBittorrent igual al reenviado por la VPN) ──
+  gluetun-qb-sync:
+    image: mjmeli/qbittorrent-port-forward-gluetun-server:latest
+    container_name: gluetun-qb-sync
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      qbittorrent:
+        condition: service_started
+    environment:
+      - QBT_USERNAME={{ arr_qbittorrent_user }}
+      - QBT_PASSWORD={{ arr_qbittorrent_password }}
+      - QBT_ADDR=http://localhost:8080
+      - GTN_ADDR=http://localhost:8000
+      - GTN_USERNAME={{ arr_gluetun_control_user }}
+      - GTN_PASSWORD={{ arr_gluetun_control_password }}
+      - INTERVAL=60
+    restart: unless-stopped
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    container_name: qui
+    user: "{{ arr_puid }}:{{ arr_pgid }}"
+    environment:
+      - TZ={{ arr_tz }}
+    volumes:
+      - /opt/stacks/arr/configs/qui:/config
+{% for n in arr_lb_disks %}
+      - /mnt/lb{{ n }}:/mnt/lb{{ n }}
+{% endfor %}
+      - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
+    ports:
+      - 7477:7476
+    restart: unless-stopped
+  # ── CALIBRE-WEB (biblioteca + envio a Kindle) ─────────────
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    platform: linux/amd64
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+    volumes:
+      - /opt/stacks/arr/configs/calibre-web:/config
+      - /mnt/raiz5/libros/biblioteca:/books
+    ports:
+      - 8083:8083
+    restart: unless-stopped
+
+  # ── LAZYLIBRARIAN (gestor de libros - reemplaza Readarr) ───
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      - PUID={{ arr_puid }}
+      - PGID={{ arr_pgid }}
+      - TZ={{ arr_tz }}
+      - DOCKER_MODS=linuxserver/mods:lazylibrarian-ffmpeg
+    volumes:
+      - /opt/stacks/arr/configs/lazylibrarian:/config
+      - /mnt/raiz5/libros:/books
+      - /mnt/raiz5/libros/biblioteca:/calibre-library
+    ports:
+      - 5299:5299
+    restart: unless-stopped

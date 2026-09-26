@@ -1,0 +1,3 @@
+# Plantilla del vault de este grupo. Copiar a vault_jano.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault_jano.yml
+vault_mikrotik_password: CHANGEME

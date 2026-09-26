@@ -1,0 +1,10 @@
+[Unit]
+Description=Ejecutar sync-obsidian.service cada 15 minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=sync-obsidian.service
+
+[Install]
+WantedBy=timers.target

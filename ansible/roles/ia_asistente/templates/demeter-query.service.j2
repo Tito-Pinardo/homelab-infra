@@ -1,0 +1,27 @@
+[Unit]
+Description=Demeter: consultas locales de solo lectura para Hermes
+After=demeter-web.service
+
+[Service]
+User=demeter
+Group=ia-bot
+SupplementaryGroups=demeter
+RuntimeDirectory=demeter-query
+RuntimeDirectoryMode=0750
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/demeter/demeter_query_server.py
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# SQLite en modo WAL: una conexion de solo lectura tambien necesita el
+# fichero -shm, asi que el directorio no puede ir en ReadOnlyPaths. La
+# garantia de no escribir la dan la apertura en modo solo lectura y
+# query_only.
+ReadWritePaths=/var/lib/demeter
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

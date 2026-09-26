@@ -1,0 +1,37 @@
+#!/bin/bash
+# Generado por Ansible (roles/dns_sync): no editar a mano, se sobrescribe.
+# Actualiza el registro A de cada dominio de dns_sync_domains con la IP
+# publica actual. El token llega desde el vault y el fichero se despliega con
+# permisos 0600.
+set -euo pipefail
+
+API_TOKEN="{{ dns_sync_cloudflare_token }}"
+IP="$(curl -s https://api.ipify.org)"
+
+if [ -z "$IP" ]; then
+  echo "No se pudo obtener la IP publica, abortando esta pasada." >&2
+  exit 1
+fi
+
+{% for d in dns_sync_domains %}
+# --- {{ d.domain }} ---
+DNS_RECORD_URL="https://api.cloudflare.com/client/v4/zones/{{ d.zone_id }}/dns_records/{{ d.record_id }}"
+CURRENT_IP="$(curl -s -X GET "$DNS_RECORD_URL" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" | jq -r '.result.content')"
+
+if [ "$IP" == "$CURRENT_IP" ]; then
+  echo "{{ d.domain }}: IP sin cambios ($IP), nada que hacer."
+else
+  echo "{{ d.domain }}: IP cambio de $CURRENT_IP a $IP, actualizando..."
+  RESPONSE="$(curl -s -X PUT "$DNS_RECORD_URL" \
+    -H "Authorization: Bearer $API_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data "{\"type\":\"A\",\"name\":\"{{ d.domain }}\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":true}")"
+  if echo "$RESPONSE" | grep -q '"success":true'; then
+    echo "{{ d.domain }}: actualizado correctamente a $IP"
+  else
+    echo "{{ d.domain }}: ERROR actualizando - $RESPONSE" >&2
+  fi
+fi
+{% endfor %}

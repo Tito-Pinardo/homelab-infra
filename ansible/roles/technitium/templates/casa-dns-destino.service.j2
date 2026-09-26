@@ -1,0 +1,14 @@
+[Unit]
+Description=DNS de Technitium en la IP y puerto originales
+Requires=dns.service casa-technitium-guard.service
+After=dns.service casa-technitium-guard.service
+PartOf=dns.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/activar-dns-misma-ip.py
+ExecStop=/usr/sbin/nft delete table inet casa_dns_destino
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

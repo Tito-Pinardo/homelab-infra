@@ -1,0 +1,138 @@
+---
+- name: Instalar PostgreSQL y dependencias
+  ansible.builtin.apt:
+    name:
+      - postgresql
+      - python3-psycopg2
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Habilitar y arrancar PostgreSQL
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: Crear usuario de base de datos para Synapse
+  # become_method: su porque la plantilla minima de Debian no trae sudo.
+  community.postgresql.postgresql_user:
+    name: "{{ synapse_db_user }}"
+    password: "{{ synapse_db_password }}"
+    state: present
+  become_user: postgres
+  become_method: ansible.builtin.su
+
+- name: Crear base de datos de Synapse
+  # Synapse exige encoding UTF8 y collation C. template0 hace falta porque
+  # template1 ya tiene fijado el locale del sistema.
+  community.postgresql.postgresql_db:
+    name: "{{ synapse_db_name }}"
+    owner: "{{ synapse_db_user }}"
+    encoding: UTF8
+    lc_collate: C
+    lc_ctype: C
+    template: template0
+    state: present
+  become_user: postgres
+  become_method: ansible.builtin.su
+
+- name: Descargar la clave GPG del repo de Matrix.org
+  ansible.builtin.get_url:
+    url: https://packages.matrix.org/debian/matrix-org-archive-keyring.gpg
+    dest: /usr/share/keyrings/matrix-org-archive-keyring.gpg
+    mode: "0644"
+
+- name: Añadir el repo apt de Matrix.org (paquete oficial, sin Docker)
+  ansible.builtin.deb822_repository:
+    name: matrix-org
+    types: deb
+    uris: https://packages.matrix.org/debian/
+    suites: "{{ ansible_distribution_release }}"
+    components: main
+    signed_by: /usr/share/keyrings/matrix-org-archive-keyring.gpg
+    state: present
+
+- name: Actualizar cache de apt tras añadir el repo
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Preseleccionar server_name en debconf (evita el prompt interactivo del paquete)
+  # El postinst del paquete genera homeserver.yaml con esta respuesta, asi que
+  # no hace falta un generate-config manual.
+  ansible.builtin.debconf:
+    name: matrix-synapse-py3
+    question: matrix-synapse/server-name
+    value: "{{ synapse_server_name }}"
+    vtype: string
+
+- name: Instalar matrix-synapse-py3
+  ansible.builtin.apt:
+    name: matrix-synapse-py3
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Desplegar overrides (postgres, registro, federacion) sin tocar homeserver.yaml
+  # homeserver.yaml lo genera el paquete una vez con sus propios secretos, que
+  # no deben regenerarse. Ansible solo gestiona conf.d/*.yaml, que sobrescribe
+  # claves puntuales.
+  ansible.builtin.template:
+    src: conf.d-overrides.yaml.j2
+    dest: /etc/matrix-synapse/conf.d/homelab.yaml
+    owner: matrix-synapse
+    group: nogroup
+    mode: "0640"
+  notify: reiniciar synapse
+
+- name: Habilitar y arrancar Synapse
+  ansible.builtin.systemd:
+    name: matrix-synapse
+    enabled: true
+    state: started
+
+- name: Instalar matrix-nio con soporte E2EE (paquete Debian, incluye python3-olm)
+  ansible.builtin.apt:
+    name: python3-matrix-nio
+    state: present
+
+- name: Crear usuario de sistema para el relay de Matrix
+  ansible.builtin.user:
+    name: matrix-relay
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Crear directorios del relay
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: matrix-relay
+    group: matrix-relay
+    mode: "0700"
+  loop:
+    - /var/lib/matrix-relay
+    - /var/lib/matrix-relay/store
+
+- name: Desplegar el script del relay E2EE
+  ansible.builtin.copy:
+    src: matrix_relay.py
+    dest: /usr/local/bin/matrix_relay.py
+    owner: matrix-relay
+    group: matrix-relay
+    mode: "0750"
+  notify: reiniciar matrix-relay
+
+- name: Desplegar unidad systemd del relay
+  ansible.builtin.template:
+    src: matrix-relay.service.j2
+    dest: /etc/systemd/system/matrix-relay.service
+    mode: "0644"
+  notify: reiniciar matrix-relay
+
+- name: Habilitar y arrancar el relay de Matrix
+  ansible.builtin.systemd:
+    name: matrix-relay
+    enabled: true
+    state: started
+    daemon_reload: true

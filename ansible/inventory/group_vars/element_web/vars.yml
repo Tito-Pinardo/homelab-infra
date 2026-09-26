@@ -1,0 +1,14 @@
+# Version fijada a proposito: una version nueva de Element Web solo se
+# instala cuando subo este numero.
+element_web_version: "1.12.27"
+
+# Homeserver propio, privado y sin federacion.
+element_homeserver_base_url: "https://matrix.example.org"
+element_homeserver_server_name: "matrix.example.org"
+
+# Sin identity server: el homeserver es privado. Vacio hace que config.json.j2
+# omita el bloque m.identity_server.
+element_identity_server_url: ""
+
+element_brand: "Element"
+element_default_theme: "light"

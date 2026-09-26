@@ -1,0 +1,20 @@
+# Variables publicas del grupo traefik_prod. Las credenciales van cifradas en
+# vault.yml. Las rutas estan en group_vars/all/services.yml.
+
+traefik_version: "3.5.3"
+traefik_acme_email: "cuenta1@example.com"
+
+# El token viene de vault.yml
+traefik_cloudflare_api_token: "{{ vault_traefik_cloudflare_api_token }}"
+
+traefik_domains:
+  - domain: "example.org"
+    wildcard: true
+  - domain: "example.net"
+    wildcard: false
+  - domain: "example.com"
+    wildcard: false
+
+# Dashboard: host publico y hash de basicAuth desde el vault.
+traefik_dashboard_host: "traefik.example.org"
+traefik_dashboard_htpasswd: "{{ vault_traefik_dashboard_htpasswd }}"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Sincronizar vault de Obsidian y reindexar en Qdrant (asistente IA)
+
+[Service]
+Type=oneshot
+User=obsidian-sync
+Group=obsidian-sync
+Environment=QDRANT_API_KEY={{ vault_qdrant_api_key }}
+Environment=QDRANT_URL={{ ia_qdrant_url }}
+Environment=OLLAMA_URL={{ ia_embeddings_ollama_url }}
+Environment=EMBED_MODEL={{ ia_embeddings_model }}
+ExecStart=/usr/bin/python3 /usr/local/bin/sync_obsidian.py

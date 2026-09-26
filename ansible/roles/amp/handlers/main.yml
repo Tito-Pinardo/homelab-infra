@@ -1,0 +1,8 @@
+---
+- name: recargar systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: recargar ufw
+  community.general.ufw:
+    state: reloaded

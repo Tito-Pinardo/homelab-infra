@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Homepage (dashboard de servicios)
+  hosts: homepage_web
+  become: true
+  roles:
+    - homepage

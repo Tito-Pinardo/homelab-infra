@@ -1,0 +1,28 @@
+---
+# Tautulli (estadisticas de Plex). Sin secretos propios. Los datos se
+# restauran aparte; este rol nunca los toca.
+
+- name: Crear directorio del stack
+  ansible.builtin.file:
+    path: /opt/stacks/tautulli
+    state: directory
+    mode: "0755"
+
+- name: Desplegar compose.yaml
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: /opt/stacks/tautulli/compose.yaml
+    mode: "0644"
+  register: tautulli_compose
+
+- name: Crear directorio de datos si no existe (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: /opt/stacks/tautulli/data
+    state: directory
+    mode: "0755"
+
+- name: Levantar el stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/stacks/tautulli
+    state: present
+    pull: missing

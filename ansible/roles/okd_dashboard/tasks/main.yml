@@ -1,0 +1,122 @@
+---
+- name: Crear el namespace del dashboard (OpenShift genera el Project automáticamente)
+  kubernetes.core.k8s:
+    kubeconfig: "{{ okd_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ okd_dashboard_namespace }}"
+
+- name: Desplegar la ConfigMap con la configuración de Homepage
+  kubernetes.core.k8s:
+    kubeconfig: "{{ okd_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: homepage-config
+        namespace: "{{ okd_dashboard_namespace }}"
+      data:
+        settings.yaml: "{{ lookup('template', 'settings.yaml.j2') }}"
+        services.yaml: "{{ lookup('template', 'services.yaml.j2') }}"
+        widgets.yaml: "{{ lookup('template', 'widgets.yaml.j2') }}"
+        bookmarks.yaml: "{{ lookup('template', 'bookmarks.yaml.j2') }}"
+  register: configmap_result
+
+- name: Desplegar Homepage (Deployment)
+  kubernetes.core.k8s:
+    kubeconfig: "{{ okd_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homepage
+        namespace: "{{ okd_dashboard_namespace }}"
+        labels:
+          app: homepage
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: homepage
+        template:
+          metadata:
+            labels:
+              app: homepage
+            annotations:
+              # Fuerza un rollout cuando cambia la config, sin depender de latest+imagePullPolicy
+              config-hash: "{{ (configmap_result.result.data | default({})) | to_json | hash('sha1') }}"
+          spec:
+            # Homepage necesita /app/config totalmente escribible (genera ahí sus propios
+            # ficheros skeleton la primera vez). La ConfigMap es de solo lectura, así que
+            # un initContainer la copia a un emptyDir antes de arrancar la app.
+            initContainers:
+              - name: seed-config
+                image: "{{ okd_dashboard_image }}"
+                command: ["sh", "-c", "cp -L /config-source/*.yaml /app/config/"]
+                volumeMounts:
+                  - name: config-source
+                    mountPath: /config-source
+                  - name: config
+                    mountPath: /app/config
+            containers:
+              - name: homepage
+                image: "{{ okd_dashboard_image }}"
+                ports:
+                  - containerPort: 3000
+                env:
+                  - name: HOMEPAGE_ALLOWED_HOSTS
+                    value: "{{ okd_dashboard_route_host }}"
+                  - name: HOMEPAGE_CONFIG_DIR
+                    value: /app/config
+                volumeMounts:
+                  - name: config
+                    mountPath: /app/config
+            volumes:
+              - name: config-source
+                configMap:
+                  name: homepage-config
+              - name: config
+                emptyDir: {}
+
+- name: Exponer Homepage como Service
+  kubernetes.core.k8s:
+    kubeconfig: "{{ okd_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: homepage
+        namespace: "{{ okd_dashboard_namespace }}"
+      spec:
+        selector:
+          app: homepage
+        ports:
+          - port: 3000
+            targetPort: 3000
+
+- name: Publicar Homepage con una Route de OpenShift
+  kubernetes.core.k8s:
+    kubeconfig: "{{ okd_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: homepage
+        namespace: "{{ okd_dashboard_namespace }}"
+      spec:
+        host: "{{ okd_dashboard_route_host }}"
+        to:
+          kind: Service
+          name: homepage
+        port:
+          targetPort: 3000
+        tls:
+          termination: edge
+          insecureEdgeTerminationPolicy: Redirect

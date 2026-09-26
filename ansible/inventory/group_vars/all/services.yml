@@ -1,0 +1,200 @@
+# Fuente de verdad compartida entre roles (traefik y homepage): las rutas
+# publicas y los servicios solo de la red local. Vive en group_vars/all para
+# que todos los hosts la carguen.
+#
+# Para anadir un servicio basta con anadirlo aqui y ejecutar los playbooks de
+# traefik y homepage; nunca toco Cloudflare ni Homepage a mano.
+
+# Registros de Cloudflare que la reconciliacion de DNS (rol traefik) nunca
+# debe borrar aunque no tengan ruta: son para cosas que no pasan por Traefik.
+cloudflare_protected_records:
+  - "vpn.example.org"
+
+# Rutas publicas.
+traefik_routes:
+  - name: ai-example-org
+    category: "Automatizacion e IA"
+    icon: "mdi-robot-outline"
+    host: "ai.example.org"
+    service_url: "http://192.0.2.24:3500"
+    middlewares: ["sec_headers@file"]
+
+  - name: amp-example-org
+    category: "Juegos"
+    icon: "mdi-gamepad-variant"
+    host: "amp.example.org"
+    service_url: "http://192.0.2.17:8080"
+    middlewares: ["amp_headers@file", "forwarded_headers@file"]
+
+  - name: books-example-org
+    category: "Descargas y biblioteca"
+    icon: "mdi-bookshelf"
+    host: "books.example.org"
+    service_url: "http://192.0.2.24:8083"
+    middlewares: ["sec_headers@file"]
+
+  # Element Web: nginx sirve la aplicacion estatica y Traefik hace TLS y
+  # enrutado por delante.
+  - name: element-example-org
+    category: "Comunicacion"
+    icon: "element"
+    host: "element.example.org"
+    service_url: "http://192.0.2.31:80"
+    middlewares: ["sec_headers@file"]
+
+  # Panel de servicios, protegido con autenticacion basica.
+  - name: homepage-example-org
+    category: "Infraestructura"
+    icon: "homepage"
+    host: "homepage.example.org"
+    service_url: "http://192.0.2.29:3000"
+    middlewares: ["sec_headers@file", "auth@file"]
+
+
+  - name: lazylibrarian-example-org
+    category: "Descargas y biblioteca"
+    icon: "lazylibrarian"
+    host: "lazylibrarian.example.org"
+    service_url: "http://192.0.2.24:5299"
+    middlewares: ["sec_headers@file"]
+
+  # Homeserver Matrix (Synapse). Traefik hace TLS.
+  - name: matrix-example-org
+    category: "Comunicacion"
+    icon: "matrix"
+    host: "matrix.example.org"
+    service_url: "http://192.0.2.32:8008"
+    middlewares: ["sec_headers@file"]
+
+  - name: n8n-example-org
+    category: "Automatizacion e IA"
+    icon: "n8n"
+    host: "n8n.example.org"
+    service_url: "http://192.0.2.30:5678"
+    middlewares: ["sec_headers@file"]
+
+  - name: overseerr-example-org
+    category: "Multimedia"
+    icon: "overseerr"
+    host: "overseerr.example.org"
+    service_url: "http://192.0.2.24:5055"
+    middlewares: ["sec_headers@file"]
+
+  - name: plex-example-org
+    category: "Multimedia"
+    icon: "plex"
+    host: "plex.example.org"
+    service_url: "https://192.0.2.11:32400"
+    pass_host_header: false
+    server_transport: "insecure_skip@file"
+    middlewares: ["sec_headers@file"]
+
+  - name: qb-example-org
+    category: "Descargas y biblioteca"
+    icon: "qbittorrent"
+    host: "qb.example.org"
+    service_url: "http://192.0.2.24:7477"
+    middlewares: ["sec_headers@file"]
+
+  - name: tautulli-example-org
+    category: "Multimedia"
+    icon: "tautulli"
+    host: "tautulli.example.org"
+    service_url: "http://192.0.2.24:8181"
+    middlewares: ["sec_headers@file"]
+
+  # Dominio apex propio.
+  - name: example-com
+    category: "Webs personales"
+    icon: "mdi-account-circle-outline"
+    host: "example.com"
+    service_url: "https://192.0.2.14:443"
+    middlewares: ["sec_headers@file"]
+
+  - name: www-example-net
+    category: "Webs personales"
+    icon: "mdi-sword-cross"
+    host: "www.example.net"
+    service_url: "http://192.0.2.24:3010"
+    middlewares: ["sec_headers@file"]
+
+# Servicios solo de la red local: nunca pasan por Traefik ni Cloudflare.
+# Homepage los lista tal cual. No repito los que ya estan en traefik_routes.
+homepage_local_services:
+  - name: "Auth (Authelia)"
+    category: "Infraestructura"
+    icon: "authelia"
+    href: "https://auth.home.example"
+  - name: "Radarr"
+    category: "Descargas y biblioteca"
+    icon: "radarr"
+    href: "https://radarr.home.example"
+  - name: "Sonarr"
+    category: "Descargas y biblioteca"
+    icon: "sonarr"
+    href: "https://sonarr.home.example"
+  - name: "Prowlarr"
+    category: "Descargas y biblioteca"
+    icon: "prowlarr"
+    href: "https://prowlarr.home.example"
+  - name: "Bazarr"
+    category: "Descargas y biblioteca"
+    icon: "bazarr"
+    href: "https://bazarr.home.example"
+  - name: "Profilarr"
+    category: "Descargas y biblioteca"
+    icon: "mdi-movie-open-outline"
+    href: "https://profilarr.home.example"
+  - name: "Jackett"
+    category: "Descargas y biblioteca"
+    icon: "jackett"
+    href: "https://jackett.home.example"
+  - name: "qBittorrent"
+    category: "Descargas y biblioteca"
+    icon: "qbittorrent"
+    href: "https://qbit.home.example"
+  # Proxmox solo desde la red local o la VPN: nunca publicado en internet.
+  - name: "Proxmox"
+    category: "Infraestructura"
+    icon: "proxmox"
+    href: "https://192.0.2.10:8006"
+  - name: "Dockge"
+    category: "Infraestructura"
+    icon: "dockge"
+    href: "https://dockge.home.example"
+  - name: "Obsidian"
+    category: "Documentos y wiki"
+    icon: "obsidian"
+    href: "https://obsidian.home.example"
+  - name: "Threadfin"
+    category: "Multimedia"
+    icon: "mdi-television-classic"
+    href: "https://threadfin.home.example"
+  - name: "Zabbix"
+    category: "Infraestructura"
+    icon: "zabbix"
+    href: "https://zabbix.home.example"
+  - name: "Wazuh"
+    category: "Infraestructura"
+    icon: "wazuh"
+    href: "https://wazuh.home.example"
+  - name: "Paperless-ngx"
+    category: "Documentos y wiki"
+    icon: "paperless-ngx"
+    href: "https://paperless.home.example"
+  - name: "Deméter"
+    category: "Documentos y wiki"
+    icon: "mdi-receipt-text-outline"
+    href: "https://demeter.home.example"
+  - name: "Technitium DNS"
+    category: "Infraestructura"
+    icon: "technitium-dns-server"
+    href: "https://technitium.home.example"
+  - name: "Agentes IA (Codeman)"
+    category: "Automatizacion e IA"
+    icon: "mdi-robot-outline"
+    href: "https://agents.home.example"
+  - name: "OKD Console"
+    category: "Infraestructura"
+    icon: "openshift"
+    href: "https://console-openshift-console.apps.okd.lab.example"

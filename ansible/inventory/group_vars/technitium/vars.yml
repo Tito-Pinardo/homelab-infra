@@ -1,0 +1,30 @@
+# Technitium DNS. Ver lxc-technitium.tf y ansible/roles/technitium.
+#
+# Versiones fijadas del runtime .NET y de Technitium para que volver a
+# aplicar no traiga sorpresas.
+technitium_dotnet_version: "10.0"
+technitium_download_url: "https://download.technitium.com/dns/DnsServerPortable.tar.gz"
+
+# Subred con permiso para usar el puerto interno de Technitium.
+technitium_lan_subnet: "192.0.2.0/24"
+
+# Unico origen con permiso para el panel web de Technitium: el proxy de la
+# red local.
+technitium_web_proxy_source_ip: "192.0.2.24"
+
+# Nombre que se usa como comprobacion antes de redirigir el DNS hacia
+# Technitium. Tiene que existir en las zonas.
+technitium_canary_hostname: "wazuh.home.example"
+
+# Firewall propio del CT: SSH restringido, sin tocar la politica del resto
+# de puertos porque Technitium sirve a toda la LAN.
+technitium_ssh_allowed_sources: []  # se define en el inventario privado
+
+# FIM (Wazuh): vigilancia extra de la configuracion, las zonas DNS y las
+# reglas nftables. Ver roles/monitoring/templates/ossec.conf.j2.
+wazuh_extra_syscheck_dirs:
+  - /etc/dns/dns.config
+  - /etc/dns/webservice.config
+  - /etc/dns/auth.config
+  - /etc/dns/zones
+  - /etc/nftables.d

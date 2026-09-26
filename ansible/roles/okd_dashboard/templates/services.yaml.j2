@@ -1,0 +1,10 @@
+{# Generado por Ansible (rol okd_dashboard) — no editar a mano, cambiar defaults/main.yml #}
+{% for category in okd_dashboard_categories %}
+- {{ category.name }}:
+{% for svc in category.services %}
+    - {{ svc.name }}:
+        href: "{{ svc.url }}"
+        icon: "{{ svc.icon }}"
+        target: _blank
+{% endfor %}
+{% endfor %}

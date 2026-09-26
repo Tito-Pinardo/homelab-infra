@@ -1,0 +1,8 @@
+# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault.yml
+vault_synapse_db_password: CHANGEME
+vault_synapse_registration_shared_secret: CHANGEME
+vault_matrix_alertas_password: CHANGEME
+vault_matrix_relay_shared_secret: CHANGEME
+vault_zabbix_psk: CHANGEME
+vault_wazuh_client_keys_line: CHANGEME

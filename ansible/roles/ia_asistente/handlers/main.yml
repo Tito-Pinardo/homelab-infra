@@ -1,0 +1,25 @@
+---
+- name: reiniciar ollama-embeddings
+  ansible.builtin.systemd:
+    name: ollama-embeddings
+    state: restarted
+    daemon_reload: true
+
+- name: activar timer sync-obsidian
+  ansible.builtin.systemd:
+    name: sync-obsidian.timer
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: reiniciar ia-bot
+  ansible.builtin.systemd:
+    name: ia-bot
+    state: restarted
+    daemon_reload: true
+
+- name: reiniciar sync-correo
+  ansible.builtin.systemd:
+    name: sync-correo
+    state: restarted
+    daemon_reload: true

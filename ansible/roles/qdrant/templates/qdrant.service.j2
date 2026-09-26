@@ -1,0 +1,15 @@
+[Unit]
+Description=Qdrant vector database (asistente IA + base semantica)
+After=network.target
+
+[Service]
+Type=simple
+User=qdrant
+Group=qdrant
+Environment=QDRANT__CONFIG_PATH=/etc/qdrant/config.yaml
+ExecStart=/usr/bin/qdrant --config-path /etc/qdrant/config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

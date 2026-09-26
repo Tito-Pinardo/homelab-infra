@@ -1,0 +1,14 @@
+{% set all_services = ((traefik_routes | default([])) + (homepage_local_services | default([]))) | rejectattr('name', 'in', homepage_hidden_services | default([])) | list %}
+{% set discovered = all_services | map(attribute='category') | unique | list %}
+{% set categories = ((homepage_category_order | default([])) + (discovered | sort)) | unique | select('in', discovered) | list %}
+# Gestionado por Ansible. Destinos en all/services.yml; presentación en homepage_web.
+{% for cat in categories %}
+- {{ cat | to_json }}:
+{% for svc in all_services | selectattr('category', 'equalto', cat) | sort(attribute='name') %}
+{% set detail = (homepage_service_details | default({})).get(svc.name, {}) %}
+    - {{ detail.get('name', svc.host.split('.')[0] | capitalize if svc.host is defined else svc.name) | to_json }}:
+        href: {{ ('https://' ~ svc.host if svc.host is defined else svc.href) | to_json }}
+        description: {{ (detail.get('description', 'Abrir servicio') ~ (' · LAN / VPN' if svc.host is not defined else '')) | to_json }}
+        icon: {{ detail.get('icon', svc.icon) | to_json }}
+{% endfor %}
+{% endfor %}

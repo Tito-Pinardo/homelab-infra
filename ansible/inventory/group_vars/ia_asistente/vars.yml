@@ -1,0 +1,61 @@
+# Version fijada.
+ollama_version: "0.34.1"
+
+# Demeter: captura de correo independiente, gestionada por playbooks/demeter.yml.
+# Solo genera candidatos por revisar.
+demeter_capture_enabled: true
+demeter_capture_limit: 100
+
+# Modelo de embeddings, local a este CT (CPU).
+ia_embeddings_ollama_url: "http://192.0.2.13:11434"
+ia_embeddings_model: "nomic-embed-text"
+
+# Modelo de chat: vive en mi PC con GPU, consultado por red. Nada sale de mi
+# red; si el PC esta apagado el bot no responde.
+ia_chat_ollama_url: "http://192.0.2.13:11434"
+ia_chat_model: "qwen3:8b"
+# Contexto suficiente para herramientas, resultados e historial.
+ia_chat_num_ctx: 8192
+
+# Qdrant.
+ia_qdrant_url: "http://192.0.2.26:6333"
+
+# Instantanea de monitorizacion que empuja el host Proxmox por cron. La clave
+# es publica.
+ia_monitoring_push_pubkey: "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
+ia_monitoring_snapshot_path: "/var/lib/monitoring-push/monitoring_snapshot.json"
+
+# Salas de Matrix: la sala del asistente y salas por tema dentro del Space.
+# Las de solo aviso no reciben preguntas.
+ia_matrix_space_id: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_asistente: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_alertas: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_amp: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_correo: "!SALA_EJEMPLO:matrix.example.org"
+# Cronos: avisos de calendario.
+ia_matrix_room_eventos: "!SALA_EJEMPLO:matrix.example.org"
+# Demeter: aqui se anuncian las compras aprobadas automaticamente; reaccionar
+# con la papelera las deshace.
+ia_matrix_room_demeter: "!SALA_EJEMPLO:matrix.example.org"
+# Pitia: resumen diario.
+ia_matrix_room_pitia: "!SALA_EJEMPLO:matrix.example.org"
+# Estas salas si aceptan preguntas (ver QUERY_ROOMS en ia_bot.py).
+ia_matrix_room_mnemosine: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_argos: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_atlas: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_hefesto: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_hipnos: "!SALA_EJEMPLO:matrix.example.org"
+ia_matrix_room_nemesis: "!SALA_EJEMPLO:matrix.example.org"
+
+# Jano: estado de la red con un usuario de solo lectura en el router.
+ia_mikrotik_host: "192.0.2.1"
+ia_mikrotik_user: "CHANGEME"
+ia_matrix_room_jano: "!SALA_EJEMPLO:matrix.example.org"
+
+# Cronos (Google Calendar) con el flujo OAuth de dispositivo. El client_id
+# no es secreto; el client_secret va en el vault.
+ia_google_calendar_client_id: "CLIENT_ID.apps.googleusercontent.com"
+ia_google_calendar_id: "primary"
+
+# Clave publica del host de las notas.
+ia_obsidian_vault_host_key: "192.0.2.24 ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"

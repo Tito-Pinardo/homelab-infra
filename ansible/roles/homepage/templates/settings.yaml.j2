@@ -1,0 +1,33 @@
+{% set all_services = ((traefik_routes | default([])) + (homepage_local_services | default([]))) | rejectattr('name', 'in', homepage_hidden_services | default([])) | list %}
+{% set discovered = all_services | map(attribute='category') | unique | list %}
+{% set categories = ((homepage_category_order | default([])) + (discovered | sort)) | unique | select('in', discovered) | list %}
+title: {{ homepage_title | to_json }}
+description: "Tu homelab, a un clic. Servicios, documentación y control."
+theme: dark
+color: slate
+background:
+  image: /images/alpine-dusk.png
+  opacity: 100
+cardBlur: md
+fullWidth: true
+language: es
+headerStyle: clean
+target: _blank
+useEqualHeights: true
+hideVersion: true
+quicklaunch:
+  searchDescriptions: true
+  hideInternetSearch: true
+  showSearchSuggestions: true
+layout:
+  A mano:
+    style: row
+    columns: 4
+    header: false
+{% for cat in categories %}
+  {{ cat | to_json }}:
+    style: row
+    columns: 4
+    tab: {{ ('Control' if cat in ['Infraestructura', 'Documentos y wiki', 'Automatizacion e IA'] else 'Biblioteca' if cat in ['Multimedia', 'Descargas y biblioteca'] else 'Comunidad') | to_json }}
+    icon: {{ (homepage_category_icons | default({})).get(cat, 'mdi-apps') | to_json }}
+{% endfor %}

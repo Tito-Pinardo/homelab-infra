@@ -1,0 +1,7 @@
+storage:
+  storage_path: /var/lib/qdrant/storage
+  snapshots_path: /var/lib/qdrant/snapshots
+
+service:
+  # API key como segunda capa ademas del firewall.
+  api_key: "{{ vault_qdrant_api_key }}"

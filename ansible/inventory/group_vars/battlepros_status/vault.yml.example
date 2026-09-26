@@ -1,0 +1,8 @@
+# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
+# y cifrar con: ansible-vault encrypt vault.yml
+vault_battlepros_amp_2fa_secret: CHANGEME
+vault_battlepros_amp_password: CHANGEME
+vault_battlepros_discord_client_secret: CHANGEME
+vault_battlepros_discord_token: CHANGEME
+vault_battlepros_ghcr_token: CHANGEME
+vault_battlepros_ghcr_user: CHANGEME

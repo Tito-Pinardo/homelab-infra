@@ -1,0 +1,155 @@
+---
+# Paperless-ngx: documentos personales. Ver lxc-paperless.tf (sin SSH,
+# connection plugin pct_remote).
+#
+# Este rol deja funcionando el stack Docker, nginx con TLS y el firewall. El
+# certificado y los datos (base de datos y documentos) se restauran aparte.
+
+- name: Instalar dependencias basicas
+  ansible.builtin.apt:
+    name: ["ca-certificates", "curl", "gnupg"]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Crear directorio para la clave GPG de Docker
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Descargar la clave GPG oficial de Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Anadir el repositorio apt de Docker
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Instalar Docker Engine + plugin compose
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Habilitar y arrancar Docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Instalar nginx-light (terminador TLS interno, igual que el CT 133 original)
+  ansible.builtin.apt:
+    name: nginx-light
+    state: present
+
+- name: Crear estructura de directorios de datos en /opt/paperless
+  ansible.builtin.file:
+    path: "/opt/paperless/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - media
+    - export
+    - consume
+
+- name: Crear directorio de certificados nginx
+  ansible.builtin.file:
+    path: /etc/nginx/certs
+    state: directory
+    mode: "0750"
+
+- name: Comprobar si el certificado TLS ya se copio desde el CT 133
+  ansible.builtin.stat:
+    path: /etc/nginx/certs/paperless.crt
+  register: paperless_cert
+
+- name: Desplegar docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/paperless/docker-compose.yml
+    mode: "0640"
+
+- name: Desplegar docker-compose.env
+  ansible.builtin.template:
+    src: docker-compose.env.j2
+    dest: /opt/paperless/docker-compose.env
+    mode: "0640"
+
+- name: Desplegar el vhost nginx TLS de Paperless
+  ansible.builtin.template:
+    src: paperless-tls.j2
+    dest: /etc/nginx/sites-available/paperless-tls
+    mode: "0644"
+  notify: reload nginx
+
+- name: Activar el vhost (symlink en sites-enabled)
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/paperless-tls
+    dest: /etc/nginx/sites-enabled/paperless-tls
+    state: link
+
+- name: Quitar el vhost "default" de nginx-light (no lo necesitamos, solo 8443)
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Habilitar y arrancar nginx (sin recargar aun si falta el certificado)
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Levantar el stack Docker (db + broker + webserver)
+  community.docker.docker_compose_v2:
+    project_src: /opt/paperless
+    state: present
+
+- name: Recargar nginx ahora que el certificado real ya esta copiado
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+  when: paperless_cert.stat.exists
+
+- name: Renderizar el contenido del firewall del CT
+  ansible.builtin.set_fact:
+    paperless_fw_content: "{{ lookup('template', 'paperless.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  # El .fw vive en el host Proxmox, no en el contenedor: esta tarea y la
+  # siguiente se delegan al host.
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: paperless_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10
+
+- name: Escribir el firewall propio del CT (policy_in DROP, sin regla de SSH a proposito)
+  # /etc/pve/firewall/ es pmxcfs: copy y template fallan con "Operation not
+  # permitted". Una redireccion de shell si funciona, por eso uso shell con
+  # stdin.
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ paperless_fw_content }}"
+  when: >
+    not paperless_fw_current.content is defined or
+    (paperless_fw_current.content | default('') | b64decode) != paperless_fw_content
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10

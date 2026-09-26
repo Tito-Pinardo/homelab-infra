@@ -1,0 +1,196 @@
+# Generado por Ansible (roles/arr_stack): no editar a mano, se sobrescribe.
+{
+    local_certs
+}
+
+(protected) {
+    forward_auth localhost:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+    }
+}
+
+# Aplicacion privada, provisionada por playbooks/demeter.yml.
+import /config/demeter/*.caddy
+
+# ── AUTH PORTAL ────────────────────────────────────────────
+auth.home.example {
+    tls internal
+    reverse_proxy localhost:9091
+}
+
+# ── *ARR STACK (protegidos con Authelia) ───────────────────
+radarr.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:7878
+}
+
+sonarr.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:8989
+}
+
+prowlarr.home.example {
+    tls internal
+    import protected
+    reverse_proxy 127.0.0.1:9696
+}
+
+bazarr.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:6767
+}
+
+profilarr.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:6868
+}
+
+jackett.home.example {
+    tls internal
+    import protected
+    reverse_proxy 127.0.0.1:9117
+}
+
+tautulli.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:8181
+}
+
+# ── DOWNLOAD CLIENTS (Authelia 2FA) ───
+qbit.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:8080
+}
+
+qui.home.example {
+    tls internal
+    import protected
+    reverse_proxy localhost:7477
+}
+
+# ── GESTIÓN (sin Authelia, tiene login propio) ─────────────
+dockge.home.example {
+    tls internal
+    import protected
+    reverse_proxy 127.0.0.1:5001
+}
+
+# ── OBSIDIAN WIKI ──────────────────────────────────────────
+obsidian.home.example {
+    tls internal
+    reverse_proxy localhost:3006
+}
+
+# ── LIBROS (con Authelia) ──────────────────────────────────
+books.home.example {
+    tls internal
+    reverse_proxy localhost:8083
+}
+
+# ── LAZYLIBRARIAN ─────────────────────────────────────────
+lazylibrarian.home.example {
+    tls internal
+    reverse_proxy localhost:5299
+}
+
+# Monitorizacion: solo LAN, Authelia 2FA y backend HTTPS verificado.
+zabbix.home.example {
+    tls internal
+    route {
+        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        import protected
+        reverse_proxy https://192.0.2.22:443 {
+            transport http {
+                tls_server_name zabbix.home.example
+                tls_trust_pool file {
+                    pem_file /config/monitoring-cas/zabbix-ca.pem
+                }
+            }
+        }
+    }
+}
+
+# Monitorizacion: solo LAN, Authelia 2FA y backend HTTPS verificado.
+wazuh.home.example {
+    tls internal
+    route {
+        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        import protected
+        reverse_proxy https://192.0.2.23:443 {
+            transport http {
+                tls_server_name 127.0.0.1
+                tls_trust_pool file {
+                    pem_file /config/monitoring-cas/wazuh-ca.pem
+                }
+            }
+        }
+    }
+}
+
+# Documentos personales sensibles: solo LAN, Authelia 2FA (segunda capa sobre el MFA propio de Paperless) y backend HTTPS verificado.
+paperless.home.example {
+    tls internal
+    route {
+        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        import protected
+        reverse_proxy https://192.0.2.25:8443 {
+            transport http {
+                tls_server_name paperless.home.example
+                tls_trust_pool file {
+                    pem_file /config/monitoring-cas/paperless-ca.pem
+                }
+            }
+        }
+    }
+}
+
+# DNS local: Technitium con Authelia y TLS verificado.
+technitium.home.example {
+    tls internal
+    route {
+        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        import protected
+        reverse_proxy https://192.0.2.15:53443 {
+            transport http {
+                tls_server_name technitium.home.example
+                tls_trust_pool file {
+                    pem_file /config/monitoring-cas/technitium-ca.pem
+                }
+            }
+        }
+    }
+}
+
+# Panel de agentes IA (Codeman): solo desde la red local y siempre detras de
+# Authelia. El firewall del CT solo acepta su puerto desde este Caddy.
+#
+# La contrasena de Codeman la pone Caddy tras pasar Authelia: Codeman limita
+# los fallos por IP y aqui todo llega desde la IP de Caddy.
+agents.home.example {
+    tls internal
+    route {
+        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        respond @entrada_publica "Solo red local" 403
+        import protected
+        reverse_proxy 192.0.2.21:8765 {
+            header_up Authorization "Basic {{ ('admin:' ~ hostvars['agents'].agents_codeman_password) | b64encode }}"
+        }
+    }
+}

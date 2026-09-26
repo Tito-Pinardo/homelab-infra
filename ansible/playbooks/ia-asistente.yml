@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar el CT del asistente IA (bot + conectores + embeddings)
+  hosts: ia_asistente
+  become: true
+  roles:
+    - ia_asistente

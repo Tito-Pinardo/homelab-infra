@@ -1,0 +1,10 @@
+---
+- name: reiniciar zabbix-agent2
+  ansible.builtin.service:
+    name: zabbix-agent2
+    state: restarted
+
+- name: reiniciar wazuh-agent
+  ansible.builtin.service:
+    name: wazuh-agent
+    state: restarted

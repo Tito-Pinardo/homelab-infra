@@ -1,0 +1,10 @@
+---
+- name: reiniciar synapse
+  ansible.builtin.systemd:
+    name: matrix-synapse
+    state: restarted
+
+- name: reiniciar matrix-relay
+  ansible.builtin.systemd:
+    name: matrix-relay
+    state: restarted

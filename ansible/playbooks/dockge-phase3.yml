@@ -1,0 +1,7 @@
+---
+# Fase 3 de dockge: Caddy + Authelia + arr.
+- name: Fase 3 - Caddy + Authelia + arr stack
+  hosts: arr_stack
+  become: true
+  roles:
+    - arr_stack

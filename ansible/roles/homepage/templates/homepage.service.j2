@@ -1,0 +1,18 @@
+[Unit]
+Description=Homepage - dashboard de servicios del homelab
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/homepage
+Environment=PORT=3000
+Environment=HOSTNAME=0.0.0.0
+Environment=NODE_ENV=production
+# Hosts aceptados por Homepage: sin esto devuelve 400 "Host validation
+# failed".
+Environment=HOMEPAGE_ALLOWED_HOSTS={{ ansible_host }}:3000,homepage.example.org
+ExecStart=/usr/bin/node /opt/homepage/server.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

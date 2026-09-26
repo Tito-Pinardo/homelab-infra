@@ -1,0 +1,6 @@
+---
+- name: reiniciar codeman
+  ansible.builtin.systemd:
+    name: codeman
+    state: restarted
+    daemon_reload: true

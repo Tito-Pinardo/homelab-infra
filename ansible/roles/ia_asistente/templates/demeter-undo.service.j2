@@ -1,0 +1,24 @@
+[Unit]
+Description=Demeter: papelera de Element (solo deshace aprobaciones automaticas)
+After=demeter-web.service
+
+[Service]
+User=demeter
+# El socket queda del grupo ia-bot (umask 0117 -> 0660): solo Hermes llega.
+Group=ia-bot
+SupplementaryGroups=demeter
+RuntimeDirectory=demeter-undo
+RuntimeDirectoryMode=0750
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/demeter/demeter_undo_server.py
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/demeter
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

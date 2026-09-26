@@ -1,0 +1,9 @@
+---
+# Hardening basico (sshd, hora y cron). Ver roles/hardening.
+# Solo la zona horaria: ansible-playbook playbooks/hardening.yml --tags zona_horaria
+# Se aplica a los CT Debian gestionados por Terraform.
+- name: Hardening basico (sshd, hora, cron)
+  hosts: traefik_prod:element_web:synapse_server:homepage_web:n8n:plex_media:qdrant:ia_asistente:technitium:amp_panel:dockge_base:agents
+  become: true
+  roles:
+    - hardening

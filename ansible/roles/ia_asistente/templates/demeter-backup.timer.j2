@@ -1,0 +1,10 @@
+[Unit]
+Description=Demeter: copia local diaria
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+Unit=demeter-backup.service
+
+[Install]
+WantedBy=timers.target

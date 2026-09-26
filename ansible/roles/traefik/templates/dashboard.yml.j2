@@ -1,0 +1,26 @@
+{# El certificado wildcard pedido aqui lo reutilizan por SNI todos los demas
+   routers "tls: {}" del mismo dominio: un solo certificado para todos. #}
+{% set wildcard_domains = traefik_domains | default([]) | selectattr('wildcard') | list %}
+http:
+  routers:
+    traefik_dashboard:
+      rule: Host(`{{ traefik_dashboard_host }}`)
+      entryPoints: [websecure]
+      service: api@internal
+      tls:
+        certResolver: letsencrypt
+{% if wildcard_domains %}
+        domains:
+{% for d in wildcard_domains %}
+          - main: "{{ d.domain }}"
+            sans:
+              - "*.{{ d.domain }}"
+{% endfor %}
+{% endif %}
+      middlewares: [auth]
+
+  middlewares:
+    auth:
+      basicAuth:
+        users:
+          - "{{ traefik_dashboard_htpasswd }}"

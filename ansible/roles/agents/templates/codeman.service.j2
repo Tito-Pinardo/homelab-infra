@@ -1,0 +1,27 @@
+# Gestionado por Ansible (roles/agents): no editar a mano.
+# Sin *_API_KEY a proposito: los CLI usan el login de suscripcion guardado en
+# /home/{{ agents_user }}.
+[Unit]
+Description=Codeman (panel web de agentes IA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ agents_user }}
+Group={{ agents_user }}
+WorkingDirectory=/home/{{ agents_user }}
+Environment=HOME=/home/{{ agents_user }}
+Environment=PATH=/home/{{ agents_user }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CODEMAN_ALLOWED_HOSTS={{ agents_ui_host }}
+# CODEMAN_PASSWORD (0600 root, systemd lo lee antes de bajar a {{ agents_user }})
+EnvironmentFile=/etc/codeman.env
+ExecStart=/usr/bin/codeman web -H 0.0.0.0 --port {{ agents_ui_port }}
+# Los agentes viven en sesiones tmux hijas de este servicio: al reiniciar
+# Codeman solo se mata su proceso, no las sesiones.
+KillMode=process
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

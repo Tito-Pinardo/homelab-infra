@@ -1,0 +1,69 @@
+---
+# Segundo repositorio bare en otro CT y otro disco, para que un fallo del
+# equipo principal no se lleve las dos copias. La cuenta usa git-shell: solo
+# puede hacer git-upload-pack y git-receive-pack.
+
+- name: Instalar git
+  community.general.apk:
+    name: git
+    state: present
+
+- name: Localizar el binario de git-shell
+  ansible.builtin.command: which git-shell
+  register: git_shell_path
+  changed_when: false
+
+- name: Anadir git-shell a /etc/shells (shell de login valida)
+  ansible.builtin.lineinfile:
+    path: /etc/shells
+    line: "{{ git_shell_path.stdout }}"
+    create: true
+
+- name: Crear grupo de sistema para el respaldo de git
+  # Alpine (busybox adduser) no crea un grupo propio por usuario; sin este paso
+  # el usuario cae en nogroup y el chgrp de .ssh falla.
+  ansible.builtin.group:
+    name: git-backup
+    system: true
+
+- name: Crear usuario de sistema para el respaldo de git
+  ansible.builtin.user:
+    name: git-backup
+    system: true
+    create_home: true
+    home: /home/git-backup
+    group: git-backup
+    shell: "{{ git_shell_path.stdout }}"
+
+- name: Crear directorio .ssh de git-backup
+  ansible.builtin.file:
+    path: /home/git-backup/.ssh
+    state: directory
+    owner: git-backup
+    group: git-backup
+    mode: "0700"
+
+- name: Autorizar las claves de las maquinas que pueden empujar el respaldo
+  ansible.builtin.copy:
+    dest: /home/git-backup/.ssh/authorized_keys
+    owner: git-backup
+    group: git-backup
+    mode: "0600"
+    content: |
+      {% for key in git_backup_authorized_keys %}
+      no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding {{ key }}
+      {% endfor %}
+
+- name: Crear el repo bare de respaldo (si no existe)
+  # Sin become_user: Alpine no trae sudo. Lo creo como root y corrijo el
+  # propietario en la tarea siguiente.
+  ansible.builtin.command: git init --bare /home/git-backup/infra-tf-backup.git
+  args:
+    creates: /home/git-backup/infra-tf-backup.git/HEAD
+
+- name: Propietario correcto del repo bare de respaldo
+  ansible.builtin.file:
+    path: /home/git-backup/infra-tf-backup.git
+    owner: git-backup
+    group: git-backup
+    recurse: true

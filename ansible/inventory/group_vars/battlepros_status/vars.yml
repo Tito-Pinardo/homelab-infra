@@ -1,0 +1,17 @@
+# battlepros-status: bot de Discord con el estado de los servidores de AMP.
+# Habla con AMP por la red interna, no por el dominio publico.
+battlepros_amp_base_url: "http://192.0.2.17:8080"
+battlepros_amp_username: "CHANGEME"
+battlepros_discord_client_id: "CHANGEME"
+battlepros_discord_oauth_redirect_uri: "https://www.example.net/api/auth/discord/callback"
+battlepros_node_env: "production"
+battlepros_panel_admin_discord_id: "CHANGEME"
+battlepros_status_refresh_seconds: "10"
+
+battlepros_ghcr_user: "{{ vault_battlepros_ghcr_user }}"
+battlepros_ghcr_token: "{{ vault_battlepros_ghcr_token }}"
+
+amp_2fa_secret: "{{ vault_battlepros_amp_2fa_secret }}"
+amp_password: "{{ vault_battlepros_amp_password }}"
+discord_client_secret: "{{ vault_battlepros_discord_client_secret }}"
+discord_token: "{{ vault_battlepros_discord_token }}"

@@ -1,0 +1,26 @@
+[Unit]
+Description=Demeter: pagina privada de revision de compras
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=demeter
+Group=demeter
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=DEMETER_PROXY_TOKEN_FILE=/etc/demeter-proxy-token
+Environment=DEMETER_DB=/var/lib/demeter/queue.sqlite
+ExecStart=/usr/bin/python3 /opt/demeter/demeter_web.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/demeter
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,68 @@
+# Activa el firewall de Proxmox en los CT cuyo fichero .fw solo tenia
+# reglas: sin la seccion [OPTIONS] con enable: 1, Proxmox no aplica ninguna.
+#
+# Uso policy_in ACCEPT a proposito: esos ficheros solo quieren bloquear
+# accesos concretos, no cerrar todo lo demas.
+#
+# Antes de tocar cada .fw guardo una copia en el host. Para ir CT a CT:
+#   -e '{"pve_fw_vmids": [<vmid>]}'
+#
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+
+- name: Host Proxmox
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox al inventario de esta ejecucion
+      ansible.builtin.add_host:
+        name: pve
+        ansible_host: 192.0.2.10
+        ansible_user: root
+        groups: pve_dynamic
+
+- name: Activar el firewall de los CT
+  hosts: pve_dynamic
+  gather_facts: false
+  vars:
+    pve_fw_vmids: []        # CT a los que se aplica, en el inventario privado
+    pve_fw_extra_rules: {}  # reglas extra por CT, en el inventario privado
+  tasks:
+    - name: Directorio de copias de seguridad
+      ansible.builtin.file:
+        path: /root/pve-fw-backup
+        state: directory
+        mode: "0700"
+
+    - name: Reglas extra (antes de activar, para no cortar nada)
+      ansible.builtin.shell:
+        cmd: |
+          f=/etc/pve/firewall/{{ item.0.key }}.fw
+          line='{{ item.1 }}'
+          grep -qxF "$line" "$f" && exit 0
+          cp "$f" /root/pve-fw-backup/{{ item.0.key }}.fw.$(date +%Y%m%d%H%M%S)
+          awk -v l="$line" '{print} /^IN ACCEPT -source {{ admin_ssh_source | regex_escape }} -p tcp -dport 22( |$)/ && !d {print l; d=1}' "$f" > /root/pve-fw.tmp
+          grep -qxF "$line" /root/pve-fw.tmp || { echo "no se encontro donde insertar" >&2; exit 1; }
+          cat /root/pve-fw.tmp > "$f" && rm -f /root/pve-fw.tmp && echo CHANGED
+      register: pve_fw_extra
+      changed_when: "'CHANGED' in pve_fw_extra.stdout"
+      loop: "{{ pve_fw_extra_rules | dict2items | selectattr('key', 'in', pve_fw_vmids) | subelements('value') }}"
+      loop_control:
+        label: "{{ item.0.key }}"
+
+    - name: Anadir [OPTIONS] enable 1 / policy_in ACCEPT
+      ansible.builtin.shell:
+        cmd: |
+          f=/etc/pve/firewall/{{ item }}.fw
+          [ -f "$f" ] || { echo "no existe $f" >&2; exit 1; }
+          grep -q '^\[OPTIONS\]' "$f" && exit 0
+          cp "$f" /root/pve-fw-backup/{{ item }}.fw.$(date +%Y%m%d%H%M%S)
+          { printf '[OPTIONS]\nenable: 1\npolicy_in: ACCEPT\npolicy_out: ACCEPT\n\n'; cat "$f"; } > /root/pve-fw.tmp
+          cat /root/pve-fw.tmp > "$f" && rm -f /root/pve-fw.tmp && echo CHANGED
+      register: pve_fw_enable
+      changed_when: "'CHANGED' in pve_fw_enable.stdout"
+      loop: "{{ pve_fw_vmids }}"
+
+    - name: Compilar y comprobar la config del firewall
+      ansible.builtin.command:
+        cmd: pve-firewall compile
+      changed_when: false

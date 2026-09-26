@@ -1,0 +1,7 @@
+---
+- name: Instalar y configurar Paperless-ngx (CT 119, documentos personales sensibles)
+  hosts: paperless
+  # Sin become: el connection plugin proxmox_pct_remote ya ejecuta como root.
+  become: false
+  roles:
+    - paperless

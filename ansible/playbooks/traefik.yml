@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Traefik
+  hosts: traefik_test
+  become: true
+  roles:
+    - traefik

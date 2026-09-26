@@ -1,0 +1,197 @@
+---
+# Technitium DNS Server: binario + systemd, sin Docker. Este rol nunca toca
+# /etc/dns/*: es estado propio de Technitium, gestionado desde su web.
+
+- name: Crear el grupo del servicio
+  ansible.builtin.group:
+    name: dns-server
+    system: true
+
+- name: Crear el usuario del servicio (sin login, sin home)
+  ansible.builtin.user:
+    name: dns-server
+    group: dns-server
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Comprobar si ya hay un paquete libicu instalado
+  ansible.builtin.shell: dpkg -l | grep -q '^ii  libicu[0-9]'
+  register: technitium_icu_present
+  changed_when: false
+  failed_when: false
+
+- name: Buscar el paquete libicu mas reciente disponible en el repo (requisito del runtime .NET)
+  ansible.builtin.shell: apt-cache search '^libicu[0-9]+$' | awk '{print $1}' | sort -V | tail -1
+  register: technitium_icu_pkg
+  changed_when: false
+  when: technitium_icu_present.rc != 0
+
+- name: Instalar ICU
+  ansible.builtin.apt:
+    name: "{{ technitium_icu_pkg.stdout }}"
+    state: present
+    update_cache: true
+  when: technitium_icu_present.rc != 0
+
+- name: Instalar dependencias basicas (la plantilla debian-13-standard no trae curl)
+  ansible.builtin.apt:
+    name: ["curl", "ca-certificates"]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Crear directorios base
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/dotnet
+    - /opt/technitium/dns
+    - /var/log/technitium/dns
+
+- name: Instalar el runtime ASP.NET Core {{ technitium_dotnet_version }} (autocontenido, no via apt)
+  ansible.builtin.shell: >
+    curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin
+    -c {{ technitium_dotnet_version }} --runtime aspnetcore
+    --no-path --install-dir /opt/dotnet
+  args:
+    creates: /opt/dotnet/dotnet
+
+- name: Enlazar dotnet en /usr/bin
+  ansible.builtin.file:
+    src: /opt/dotnet/dotnet
+    dest: /usr/bin/dotnet
+    state: link
+
+- name: Descargar y extraer Technitium DNS Server
+  ansible.builtin.unarchive:
+    src: "{{ technitium_download_url }}"
+    dest: /opt/technitium/dns
+    remote_src: true
+    creates: /opt/technitium/dns/DnsServerApp.dll
+
+- name: Crear /etc/dns si no existe (primer despliegue, sin datos restaurados todavia)
+  ansible.builtin.file:
+    path: /etc/dns
+    state: directory
+    owner: dns-server
+    group: dns-server
+    mode: "0700"
+
+- name: Fijar propietario de /opt/technitium y /var/log/technitium
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: dns-server
+    group: dns-server
+    recurse: true
+  loop:
+    - /opt/technitium
+    - /var/log/technitium
+
+- name: Desplegar la unidad systemd de Technitium
+  ansible.builtin.template:
+    src: dns.service.j2
+    dest: /etc/systemd/system/dns.service
+    mode: "0644"
+  notify: reiniciar dns.service
+
+- name: Crear /etc/nftables.d
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+
+- name: Desplegar la regla de acceso restringido (panel web + puerto interno)
+  ansible.builtin.template:
+    src: casa-technitium-guard.nft.j2
+    dest: /etc/nftables.d/casa-technitium-guard.nft
+    mode: "0600"
+  register: technitium_guard_nft
+
+- name: Desplegar la regla de redireccion 53->5300
+  ansible.builtin.template:
+    src: casa-dns-destino.nft.j2
+    dest: /etc/nftables.d/casa-dns-destino.nft
+    mode: "0644"
+
+- name: Desplegar el script canario (activar-dns-misma-ip.py)
+  ansible.builtin.template:
+    src: activar-dns-misma-ip.py.j2
+    dest: /usr/local/sbin/activar-dns-misma-ip.py
+    mode: "0755"
+
+- name: Desplegar la unidad systemd del guard de nftables
+  ansible.builtin.template:
+    src: casa-technitium-guard.service.j2
+    dest: /etc/systemd/system/casa-technitium-guard.service
+    mode: "0644"
+  register: technitium_guard_service
+
+- name: Desplegar la unidad systemd de la redireccion 53->5300
+  ansible.builtin.template:
+    src: casa-dns-destino.service.j2
+    dest: /etc/systemd/system/casa-dns-destino.service
+    mode: "0644"
+  register: technitium_destino_service
+
+- name: Recargar systemd si cambio alguna unidad
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: technitium_guard_service.changed or technitium_destino_service.changed
+
+- name: Habilitar y arrancar Technitium
+  ansible.builtin.systemd:
+    name: dns.service
+    enabled: true
+    state: started
+
+- name: Reaplicar el guard de nftables si cambio la regla (oneshot, no se relanza solo)
+  ansible.builtin.systemd:
+    name: casa-technitium-guard.service
+    state: restarted
+    enabled: true
+  when: technitium_guard_nft.changed
+
+- name: Habilitar el guard de nftables (sin cambios, solo asegurar que esta activo)
+  ansible.builtin.systemd:
+    name: casa-technitium-guard.service
+    enabled: true
+    state: started
+  when: not technitium_guard_nft.changed
+
+- name: Habilitar y activar la redireccion 53->5300 (corre el canario, solo redirige si Technitium responde bien)
+  ansible.builtin.systemd:
+    name: casa-dns-destino.service
+    enabled: true
+    state: started
+
+- name: Renderizar el firewall propio del CT (SSH restringido, resto de puertos sin tocar la politica)
+  ansible.builtin.set_fact:
+    technitium_fw_content: "{{ lookup('template', 'technitium.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  # El .fw vive en el host Proxmox (pmxcfs): mismo patron que roles/paperless.
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: technitium_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10
+
+- name: Escribir el firewall propio del CT (solo 3 reglas de SSH, sin tocar la politica por defecto)
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ technitium_fw_content }}"
+  when: >
+    not technitium_fw_current.content is defined or
+    (technitium_fw_current.content | default('') | b64decode) != technitium_fw_content
+  delegate_to: 192.0.2.10
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.10

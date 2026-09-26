@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Qdrant
+  hosts: qdrant
+  become: true
+  roles:
+    - qdrant

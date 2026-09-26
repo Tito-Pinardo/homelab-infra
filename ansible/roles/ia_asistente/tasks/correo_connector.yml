@@ -1,0 +1,27 @@
+# Conector de correo. Corre con el mismo usuario que el conector de notas,
+# que ya tiene acceso a su directorio de estado.
+
+- name: Desplegar el script del conector de correo
+  ansible.builtin.copy:
+    src: sync_correo.py
+    dest: /usr/local/bin/sync_correo.py
+    owner: obsidian-sync
+    group: obsidian-sync
+    mode: "0750"
+  # Es un servicio persistente: sin este notify un cambio de codigo no se
+  # recogeria hasta el siguiente reinicio.
+  notify: reiniciar sync-correo
+
+- name: "Desplegar servicio systemd persistente del conector de correo (IMAP IDLE, ya no timer)"
+  ansible.builtin.template:
+    src: sync-correo.service.j2
+    dest: /etc/systemd/system/sync-correo.service
+    mode: "0644"
+  notify: reiniciar sync-correo
+
+- name: Habilitar y arrancar sync-correo
+  ansible.builtin.systemd:
+    name: sync-correo
+    enabled: true
+    state: started
+    daemon_reload: true

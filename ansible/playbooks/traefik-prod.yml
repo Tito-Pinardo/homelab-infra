@@ -1,0 +1,6 @@
+---
+- name: Instalar y configurar Traefik (producción real)
+  hosts: traefik_prod
+  become: true
+  roles:
+    - traefik
