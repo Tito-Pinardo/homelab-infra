@@ -66,13 +66,6 @@ traefik_routes:
     service_url: "http://192.0.2.32:8008"
     middlewares: ["sec_headers@file"]
 
-  - name: n8n-example-org
-    category: "Automatizacion e IA"
-    icon: "n8n"
-    host: "n8n.example.org"
-    service_url: "http://192.0.2.30:5678"
-    middlewares: ["sec_headers@file"]
-
   - name: overseerr-example-org
     category: "Multimedia"
     icon: "overseerr"
@@ -87,28 +80,6 @@ traefik_routes:
     service_url: "https://192.0.2.11:32400"
     pass_host_header: false
     server_transport: "insecure_skip@file"
-    middlewares: ["sec_headers@file"]
-
-  - name: tautulli-example-org
-    category: "Multimedia"
-    icon: "tautulli"
-    host: "tautulli.example.org"
-    service_url: "http://192.0.2.24:8181"
-    middlewares: ["sec_headers@file"]
-
-  # Dominio apex propio.
-  - name: example-com
-    category: "Webs personales"
-    icon: "mdi-account-circle-outline"
-    host: "example.com"
-    service_url: "https://192.0.2.14:443"
-    middlewares: ["sec_headers@file"]
-
-  - name: www-example-net
-    category: "Webs personales"
-    icon: "mdi-sword-cross"
-    host: "www.example.net"
-    service_url: "http://192.0.2.24:3010"
     middlewares: ["sec_headers@file"]
 
 # Servicios solo de la red local: nunca pasan por Traefik ni Cloudflare.
@@ -146,6 +117,15 @@ homepage_local_services:
     category: "Descargas y biblioteca"
     icon: "qbittorrent"
     href: "https://qbit.home.example"
+  # n8n y Tautulli solo desde la red local o la VPN, detras de Authelia.
+  - name: "n8n"
+    category: "Automatizacion e IA"
+    icon: "n8n"
+    href: "https://n8n.home.example"
+  - name: "Tautulli"
+    category: "Multimedia"
+    icon: "tautulli"
+    href: "https://tautulli.home.example"
   # Qui solo desde la red local o la VPN, detras de Authelia.
   - name: "Qui"
     category: "Descargas y biblioteca"

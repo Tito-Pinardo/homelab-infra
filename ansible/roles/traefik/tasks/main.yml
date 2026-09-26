@@ -125,7 +125,7 @@
     state: present
     api_token: "{{ traefik_cloudflare_api_token }}"
   delegate_to: localhost
-  loop: "{{ traefik_routes + [{'host': traefik_dashboard_host}] }}"
+  loop: "{{ traefik_routes + ([{'host': traefik_dashboard_host}] if traefik_dashboard_public | default(true) else []) }}"
   loop_control:
     label: "{{ item.host }}"
   when:
@@ -168,4 +168,4 @@
     label: "{{ item.name }}"
   when:
     - traefik_cloudflare_api_token is defined
-    - item.name not in ((traefik_routes | default([]) | selectattr('host', 'regex', '\.example\.org$') | map(attribute='host') | list) + [traefik_dashboard_host] + (cloudflare_protected_records | default([])))
+    - item.name not in ((traefik_routes | default([]) | selectattr('host', 'regex', '\.example\.org$') | map(attribute='host') | list) + ([traefik_dashboard_host] if traefik_dashboard_public | default(true) else []) + (cloudflare_protected_records | default([])))

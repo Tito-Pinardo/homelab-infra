@@ -62,6 +62,25 @@ tautulli.home.example {
     reverse_proxy localhost:8181
 }
 
+n8n.home.example {
+    tls internal
+    import protected
+    reverse_proxy 192.0.2.30:5678
+}
+
+# Dashboard de Traefik: ya no se publica en internet. Caddy le pasa el nombre
+# que espera su router y valida su certificado de Let's Encrypt.
+traefik.home.example {
+    tls internal
+    import protected
+    reverse_proxy https://192.0.2.12:443 {
+        header_up Host {{ traefik_dashboard_host_prod }}
+        transport http {
+            tls_server_name {{ traefik_dashboard_host_prod }}
+        }
+    }
+}
+
 # ── DOWNLOAD CLIENTS (Authelia 2FA) ───
 qbit.home.example {
     tls internal

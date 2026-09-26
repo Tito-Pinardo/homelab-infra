@@ -48,6 +48,9 @@ ARGOS_DOMINIOS = ["example.org", "example.com", "example.net"]
 # para su TLD. Se define en la configuracion privada.
 ARGOS_WHOIS_SERVER_OVERRIDE: dict[str, str] = {}
 ARGOS_TLS_HOST = "traefik.example.org"
+# Me conecto directamente a Traefik para ver su certificado de Let's Encrypt:
+# por el dominio publico responderia el certificado de Cloudflare.
+ARGOS_TLS_CONNECT = "192.0.2.12"
 
 # Herramientas cuya invocacion se muestra en la sala antes de responder,
 # por transparencia (consultas de correo y cualquier escritura real). Cada
@@ -701,8 +704,8 @@ def _whois_expiry(domain: str) -> str | None:
     ...
 
 
-def _tls_cert_expiry(host: str) -> str | None:
-    """Devuelve la fecha de caducidad del certificado TLS de un host."""
+def _tls_cert_expiry(host: str, connect: str | None = None) -> str | None:
+    """Devuelve la fecha de caducidad del certificado TLS de un host, conectando opcionalmente a otra direccion."""
     ...
 
 
