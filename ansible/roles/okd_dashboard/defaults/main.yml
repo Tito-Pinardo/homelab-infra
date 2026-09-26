@@ -27,7 +27,7 @@ okd_dashboard_categories:
       - { name: Jackett, url: "https://jackett.home.example", icon: jackett.png }
       - { name: LazyLibrarian, url: "https://lazylibrarian.home.example", icon: lazylibrarian.png }
       - { name: Profilarr, url: "https://profilarr.home.example", icon: profilarr.png }
-      - { name: qBittorrent, url: "https://qb.example.org", icon: qbittorrent.png }
+      - { name: qBittorrent, url: "https://qui.home.example", icon: qbittorrent.png }
       - { name: Overseerr, url: "https://overseerr.example.org", icon: overseerr.png }
 
   - name: Infraestructura y monitorización

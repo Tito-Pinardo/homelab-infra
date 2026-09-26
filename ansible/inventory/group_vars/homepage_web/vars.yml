@@ -60,7 +60,7 @@ homepage_service_details:
   Proxmox:
     name: Proxmox
     description: Máquinas virtuales y contenedores
-  qb-example-org:
+  Qui:
     name: Qui
     description: Panel alternativo de descargas
   tautulli-example-org:

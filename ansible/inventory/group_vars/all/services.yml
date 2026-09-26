@@ -89,13 +89,6 @@ traefik_routes:
     server_transport: "insecure_skip@file"
     middlewares: ["sec_headers@file"]
 
-  - name: qb-example-org
-    category: "Descargas y biblioteca"
-    icon: "qbittorrent"
-    host: "qb.example.org"
-    service_url: "http://192.0.2.24:7477"
-    middlewares: ["sec_headers@file"]
-
   - name: tautulli-example-org
     category: "Multimedia"
     icon: "tautulli"
@@ -153,6 +146,11 @@ homepage_local_services:
     category: "Descargas y biblioteca"
     icon: "qbittorrent"
     href: "https://qbit.home.example"
+  # Qui solo desde la red local o la VPN, detras de Authelia.
+  - name: "Qui"
+    category: "Descargas y biblioteca"
+    icon: "qbittorrent"
+    href: "https://qui.home.example"
   # Proxmox solo desde la red local o la VPN: nunca publicado en internet.
   - name: "Proxmox"
     category: "Infraestructura"
