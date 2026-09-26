@@ -12,13 +12,6 @@ cloudflare_protected_records:
 
 # Rutas publicas.
 traefik_routes:
-  - name: ai-example-org
-    category: "Automatizacion e IA"
-    icon: "mdi-robot-outline"
-    host: "ai.example.org"
-    service_url: "http://192.0.2.24:3500"
-    middlewares: ["sec_headers@file"]
-
   - name: amp-example-org
     category: "Juegos"
     icon: "mdi-gamepad-variant"
@@ -42,21 +35,6 @@ traefik_routes:
     service_url: "http://192.0.2.31:80"
     middlewares: ["sec_headers@file"]
 
-  # Panel de servicios, protegido con autenticacion basica.
-  - name: homepage-example-org
-    category: "Infraestructura"
-    icon: "homepage"
-    host: "homepage.example.org"
-    service_url: "http://192.0.2.29:3000"
-    middlewares: ["sec_headers@file", "auth@file"]
-
-
-  - name: lazylibrarian-example-org
-    category: "Descargas y biblioteca"
-    icon: "lazylibrarian"
-    host: "lazylibrarian.example.org"
-    service_url: "http://192.0.2.24:5299"
-    middlewares: ["sec_headers@file"]
 
   # Homeserver Matrix (Synapse). Traefik hace TLS.
   - name: matrix-example-org
@@ -126,6 +104,11 @@ homepage_local_services:
     category: "Multimedia"
     icon: "tautulli"
     href: "https://tautulli.home.example"
+  # LazyLibrarian solo desde la red local o la VPN (login propio).
+  - name: "LazyLibrarian"
+    category: "Descargas y biblioteca"
+    icon: "lazylibrarian"
+    href: "https://lazylibrarian.home.example"
   # Qui solo desde la red local o la VPN, detras de Authelia.
   - name: "Qui"
     category: "Descargas y biblioteca"

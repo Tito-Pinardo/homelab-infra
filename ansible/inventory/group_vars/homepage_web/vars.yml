@@ -27,12 +27,8 @@ homepage_category_icons:
   Webs personales: mdi-web
 # Homepage no necesita enlazarse a si mismo.
 homepage_hidden_services:
-  - homepage-example-org
   - Threadfin
 homepage_service_details:
-  ai-example-org:
-    name: Asistente IA
-    description: Conversaciones y herramientas de IA
   amp-example-org:
     name: AMP
     description: Consolas y servidores de juegos
@@ -42,7 +38,7 @@ homepage_service_details:
   element-example-org:
     name: Element
     description: Conversaciones y salas de Matrix
-  lazylibrarian-example-org:
+  LazyLibrarian:
     name: LazyLibrarian
     description: Buscar y organizar libros
   matrix-example-org:
