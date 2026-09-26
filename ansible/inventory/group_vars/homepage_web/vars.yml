@@ -48,7 +48,7 @@ homepage_service_details:
   matrix-example-org:
     name: Matrix
     description: Servidor de mensajería · API
-  n8n-example-org:
+  n8n:
     name: n8n
     description: Flujos y tareas automatizadas
   overseerr-example-org:
@@ -63,15 +63,9 @@ homepage_service_details:
   Qui:
     name: Qui
     description: Panel alternativo de descargas
-  tautulli-example-org:
+  Tautulli:
     name: Tautulli
     description: Actividad y reproducciones de Plex
-  example-com:
-    name: Web personal
-    description: Web personal
-  www-example-net:
-    name: BattlePros
-    description: Comunidad y estado de los juegos
   Auth (Authelia):
     name: Authelia
     description: Acceso y autenticación

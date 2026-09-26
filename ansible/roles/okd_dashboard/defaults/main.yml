@@ -12,7 +12,7 @@ okd_dashboard_categories:
     services:
       - { name: Jellyfin, url: "https://jellyfin.example.org", icon: jellyfin.png }
       - { name: Plex, url: "https://plex.example.org", icon: plex.png }
-      - { name: Tautulli, url: "https://tautulli.example.org", icon: tautulli.png }
+      - { name: Tautulli, url: "https://tautulli.home.example", icon: tautulli.png }
       - { name: Wizarr, url: "https://wizarr.example.org", icon: wizarr.png }
       - { name: Metube, url: "https://metube.example.org", icon: metube.png }
       - { name: Immich, url: "https://immich.example.org", icon: immich.png }
@@ -35,7 +35,7 @@ okd_dashboard_categories:
       - { name: Proxmox, url: "https://192.0.2.10:8006", icon: proxmox.png }
       - { name: Portainer, url: "https://portainer.example.org", icon: portainer.png }
       - { name: Dockge, url: "https://dockge.home.example", icon: dockge.png }
-      - { name: Traefik, url: "https://traefik.example.org", icon: traefik.png }
+      - { name: Traefik, url: "https://traefik.home.example", icon: traefik.png }
       - { name: Technitium DNS, url: "https://192.0.2.15/admin", icon: technitium.png }
       - { name: UniFi, url: "https://unifi.example.org/manage/default/dashboard", icon: unifi.png }
       - { name: Grafana, url: "https://grafana.example.org", icon: grafana.png }
@@ -46,7 +46,7 @@ okd_dashboard_categories:
 
   - name: Automatización y desarrollo
     services:
-      - { name: n8n, url: "https://n8n.example.org", icon: n8n.png }
+      - { name: n8n, url: "https://n8n.home.example", icon: n8n.png }
       - { name: Ansible Semaphore, url: "https://ansible.example.org", icon: semaphore.png }
       - { name: ArgoCD, url: "https://argocd.example.org", icon: argo-cd.png }
       - { name: GitLab, url: "https://gitlab.example.org", icon: gitlab.png }

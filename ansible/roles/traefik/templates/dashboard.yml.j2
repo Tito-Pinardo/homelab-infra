@@ -17,9 +17,14 @@ http:
               - "*.{{ d.domain }}"
 {% endfor %}
 {% endif %}
-      middlewares: [auth]
+      middlewares: [auth{% if traefik_dashboard_allowed_ips | default([]) %}, dashboard_lan{% endif %}]
 
   middlewares:
+{% if traefik_dashboard_allowed_ips | default([]) %}
+    dashboard_lan:
+      ipAllowList:
+        sourceRange: {{ traefik_dashboard_allowed_ips | to_json }}
+{% endif %}
     auth:
       basicAuth:
         users:

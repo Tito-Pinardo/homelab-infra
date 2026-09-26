@@ -30,3 +30,6 @@ caddy_entrada_publica: ""
 arr_gluetun_outbound_subnets: ""
 arr_gluetun_input_ports: ""
 arr_vpn_server_countries: ""
+
+# Nombre del router del dashboard de Traefik (ver traefik.home.example en el Caddyfile).
+traefik_dashboard_host_prod: "traefik.example.org"

@@ -17,4 +17,8 @@ traefik_domains:
 
 # Dashboard: host publico y hash de basicAuth desde el vault.
 traefik_dashboard_host: "traefik.example.org"
+# El dashboard no se publica en internet: sin CNAME en Cloudflare y solo
+# accesible desde las redes permitidas (en local: https://traefik.home.example).
+traefik_dashboard_public: false
+traefik_dashboard_allowed_ips: []  # se define en el inventario privado
 traefik_dashboard_htpasswd: "{{ vault_traefik_dashboard_htpasswd }}"
