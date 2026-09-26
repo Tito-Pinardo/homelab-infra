@@ -62,6 +62,13 @@ tautulli.home.example {
     reverse_proxy localhost:8181
 }
 
+# Homepage: ya no se publica en internet.
+homepage.home.example {
+    tls internal
+    import protected
+    reverse_proxy 192.0.2.29:3000
+}
+
 n8n.home.example {
     tls internal
     import protected

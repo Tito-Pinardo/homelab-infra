@@ -10,7 +10,7 @@ Environment=HOSTNAME=0.0.0.0
 Environment=NODE_ENV=production
 # Hosts aceptados por Homepage: sin esto devuelve 400 "Host validation
 # failed".
-Environment=HOMEPAGE_ALLOWED_HOSTS={{ ansible_host }}:3000,homepage.example.org
+Environment=HOMEPAGE_ALLOWED_HOSTS={{ ansible_host }}:3000,homepage.home.example
 ExecStart=/usr/bin/node /opt/homepage/server.js
 Restart=on-failure
 
