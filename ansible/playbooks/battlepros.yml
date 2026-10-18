@@ -1,0 +1,20 @@
+---
+# battlepros-status (CT dockge): web publica en www.example.net (3010,
+# Traefik) y panel de gestion solo interno en battlepros.home.arpa (3011 en
+# 127.0.0.1, Caddy + Authelia). Ver docs/battlepros.md.
+#   ansible-playbook playbooks/battlepros.yml
+- name: battlepros-status (compose y stack.env)
+  hosts: battlepros_status
+  become: true
+  roles:
+    - battlepros_status
+
+# El comodin *.home.arpa de Technitium ya apunta a dockge: no hace falta DNS.
+- name: Publicar battlepros.home.arpa en el Caddy de dockge
+  hosts: arr_stack
+  become: true
+  tasks:
+    - name: Aplicar el Caddyfile sin reiniciar el stack
+      ansible.builtin.include_role:
+        name: arr_stack
+        tasks_from: caddy_recargar

@@ -1,9 +1,16 @@
 ---
-# Paperless-ngx: documentos personales. Ver lxc-paperless.tf (sin SSH,
-# connection plugin pct_remote).
+# Paperless-ngx (CT 119) - sustituye al CT 133 (creado a mano 2026-09-09).
+# Documentos personales sensibles - ver lxc-paperless.tf para las
+# decisiones de seguridad (sin SSH, connection plugin pct_remote).
 #
-# Este rol deja funcionando el stack Docker, nginx con TLS y el firewall. El
-# certificado y los datos (base de datos y documentos) se restauran aparte.
+# Este role deja el stack Docker + nginx-TLS + firewall funcionando, pero
+# el CERTIFICADO TLS (.crt/.key) y los DATOS (BD + media/export/consume)
+# NO se generan/crean aqui - se copian 1:1 desde el CT 133 original en un
+# paso manual aparte (migracion de datos, ver el runbook), para no
+# regenerar nada que Caddy (CT106, fuera de alcance) ya tenga que confiar.
+# Por eso el reload de nginx solo se dispara si el certificado YA existe -
+# en el primer despliegue (antes de copiar datos) es normal y esperado
+# que nginx no tenga certificado todavia.
 
 - name: Instalar dependencias basicas
   ansible.builtin.apt:
@@ -126,30 +133,39 @@
     paperless_fw_content: "{{ lookup('template', 'paperless.fw.j2') }}"
 
 - name: Leer el firewall actual del CT en el host Proxmox (si existe)
-  # El .fw vive en el host Proxmox, no en el contenedor: esta tarea y la
-  # siguiente se delegan al host.
+  # El fichero .fw vive en el HOST Proxmox (/etc/pve/firewall/<vmid>.fw), no
+  # dentro del contenedor - por eso esta tarea (y la siguiente) se delegan
+  # por SSH normal al host (192.0.2.2), a diferencia de TODAS las demas
+  # tareas de este role (que van por community.proxmox.proxmox_pct_remote
+  # hacia el CT). Mismo objetivo que ensure_firewall_rule() en
+  # scripts/register_monitoring.py, pero como Ansible idempotente.
   ansible.builtin.slurp:
     src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
   register: paperless_fw_current
   failed_when: false
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
 
 - name: Escribir el firewall propio del CT (policy_in DROP, sin regla de SSH a proposito)
-  # /etc/pve/firewall/ es pmxcfs: copy y template fallan con "Operation not
-  # permitted". Una redireccion de shell si funciona, por eso uso shell con
-  # stdin.
+  # /etc/pve/firewall/ es pmxcfs (filesystem de cluster de Proxmox, FUSE) -
+  # no soporta ni el patron atomico normal de Ansible (temporal + rename,
+  # ver unsafe_writes) NI un chmod/copy directo sobre el destino: los
+  # modulos copy/template de Ansible fallan con "Operation not permitted"
+  # en ambos casos (real, 2026-09-17). Una redireccion de shell normal
+  # (">") si funciona - por eso se usa 'shell' con stdin en vez de
+  # copy/template, comparando antes el contenido a mano para que la tarea
+  # siga siendo idempotente.
   ansible.builtin.shell:
     cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
     stdin: "{{ paperless_fw_content }}"
   when: >
     not paperless_fw_current.content is defined or
     (paperless_fw_current.content | default('') | b64decode) != paperless_fw_content
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2

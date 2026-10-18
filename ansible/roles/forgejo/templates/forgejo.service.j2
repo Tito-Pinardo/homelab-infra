@@ -1,0 +1,20 @@
+# Generado por Ansible (role forgejo) - no editar a mano.
+[Unit]
+Description=Forgejo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=git
+Group=git
+WorkingDirectory=/var/lib/forgejo
+Environment=USER=git HOME=/var/lib/forgejo FORGEJO_WORK_DIR=/var/lib/forgejo
+ExecStart=/usr/local/bin/forgejo web --config /etc/forgejo/app.ini
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

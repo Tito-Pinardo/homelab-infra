@@ -1,7 +1,9 @@
 ---
-# Actualiza el sistema operativo de todos los CT del inventario, sea cual sea
-# el gestor de paquetes (apt o apk). No reinicia servicios ni CT.
-# Uso: ansible-playbook playbooks/update-all.yml
+# Actualiza el sistema operativo de TODOS los CT del inventario de una sola
+# vez, sea cual sea el gestor de paquetes (apt en los Debian, apk en los
+# Alpine como dns-sync). No reinicia servicios ni el CT - solo deja los
+# paquetes al dia.
+# Uso: ansible-playbook playbooks/update-all.yml (o Actions -> actualizar.yml)
 - name: Actualizar paquetes en todos los CT
   hosts: all
   become: true

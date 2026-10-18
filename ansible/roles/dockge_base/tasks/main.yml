@@ -1,6 +1,8 @@
 ---
-# Firewall Proxmox propio del CT: SSH restringido, igual que el resto de la
-# flota.
+# Firewall Proxmox propio del CT (patron "quirurgico" SSH-LAN estandar,
+# igual que el resto de la flota). El CT106 original NUNCA tuvo esto
+# activado (decision deliberada de una auditoria anterior) - se activa
+# ahora a peticion del usuario al migrar.
 
 - name: Renderizar el firewall propio del CT
   ansible.builtin.set_fact:
@@ -11,11 +13,11 @@
     src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
   register: dockge_fw_current
   failed_when: false
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
 
 - name: Escribir el firewall propio del CT (solo 3 reglas de SSH)
   ansible.builtin.shell:
@@ -24,8 +26,8 @@
   when: >
     not dockge_fw_current.content is defined or
     (dockge_fw_current.content | default('') | b64decode) != dockge_fw_content
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2

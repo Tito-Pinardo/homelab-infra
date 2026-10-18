@@ -1,6 +1,7 @@
 ---
-# CT de agentes: CLI de agentes, Codeman y herramientas de IaC. Despues toca
-# playbooks/agents-access.yml y el login manual de cada CLI.
+# CT 123 "agents": CLI de agentes + Codeman + herramientas de IaC.
+# Despues de este, playbooks/agents-access.yml (acceso a la flota) y el
+# login manual de cada CLI (ver runbook en Obsidian).
 - name: Instalar y configurar el CT de agentes IA
   hosts: agents
   become: true

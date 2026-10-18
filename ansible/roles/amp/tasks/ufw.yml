@@ -1,0 +1,33 @@
+---
+# ufw del CT de AMP (lo gestiona AMP con "ampinstmgr updatefirewall"): que
+# siempre arranque desde cero y lo reintente si falla. El 17/18-10 fallo en
+# cada arranque a medio cargar y dejo el CT sin red (docs/amp-rendimiento.md).
+#   - include_role: { name: amp, tasks_from: ufw }
+- name: Script que limpia los restos de ufw
+  ansible.builtin.copy:
+    src: ufw-limpiar
+    dest: /usr/local/sbin/ufw-limpiar
+    mode: "0755"
+
+- name: Carpeta del drop-in de ufw
+  ansible.builtin.file:
+    path: /etc/systemd/system/ufw.service.d
+    state: directory
+    mode: "0755"
+
+- name: Drop-in de ufw (limpiar antes y reintentar)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ufw.service.d/limpiar.conf
+    mode: "0644"
+    content: |
+      # Gestionado por Ansible (roles/amp/tasks/ufw.yml).
+      [Service]
+      ExecStartPre=/usr/local/sbin/ufw-limpiar
+      Restart=on-failure
+      RestartSec=10
+  register: amp_ufw_dropin
+
+- name: Recargar systemd si cambio el drop-in
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: amp_ufw_dropin.changed  # noqa: no-handler

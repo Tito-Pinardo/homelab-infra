@@ -1,0 +1,156 @@
+---
+# Web personal (CT 125): binario de Rust + PostgreSQL local.
+# Ver docs/landing.md para el porque de cada pieza.
+
+# Firewall propio del CT, con policy_in DROP (ver la plantilla).
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    landing_fw_content: "{{ lookup('template', 'landing.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: landing_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+- name: Escribir el firewall propio del CT (SSH y web solo desde Traefik)
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ landing_fw_content }}"
+    stdin_add_newline: false
+  when: >
+    not landing_fw_current.content is defined or
+    (landing_fw_current.content | default('') | b64decode) != landing_fw_content
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# ---------------------------------------------------------------- PostgreSQL
+
+- name: Instalar PostgreSQL
+  ansible.builtin.apt:
+    # acl: Ansible la necesita para pasar de root al usuario postgres.
+    name: [postgresql, python3-psycopg2, acl]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: PostgreSQL escucha solo en el socket local
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.conf
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = ''"
+  register: landing_pg_conf
+
+- name: Reiniciar PostgreSQL si cambio la configuracion
+  ansible.builtin.systemd:
+    name: postgresql
+    state: restarted
+  when: landing_pg_conf is changed
+
+- name: Arrancar PostgreSQL
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Usuario de sistema de la web
+  ansible.builtin.user:
+    name: "{{ landing_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ landing_dir }}"
+    create_home: false
+
+# Autenticacion peer por el socket: el usuario de sistema "landing" entra
+# como el rol "landing" sin contraseña. El rol no es superusuario: solo es
+# dueño de su base de datos (necesario para las migraciones).
+- name: Rol de PostgreSQL de la web
+  community.postgresql.postgresql_user:
+    name: "{{ landing_user }}"
+    role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE,LOGIN
+  become_user: postgres
+  # La plantilla de Debian no trae sudo; root pasa a postgres con su.
+  become_method: ansible.builtin.su
+
+- name: Base de datos de la web
+  community.postgresql.postgresql_db:
+    name: landing
+    owner: "{{ landing_user }}"
+    encoding: UTF-8
+    template: template0
+  become_user: postgres
+  # La plantilla de Debian no trae sudo; root pasa a postgres con su.
+  become_method: ansible.builtin.su
+
+# ---------------------------------------------------------------- binario
+
+- name: Directorios de la web
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ landing_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ landing_dir }}", owner: root, mode: "0755" }
+    - { path: "{{ landing_dir }}/bin", owner: root, mode: "0755" }
+    # Lo escribe el cron del estado del homelab; el servicio solo lo lee.
+    - { path: "{{ landing_dir }}/estado", owner: root, mode: "0755" }
+    - { path: /etc/landing, owner: root, mode: "0750" }
+
+- name: Copiar el binario
+  ansible.builtin.copy:
+    src: "{{ landing_binary_src }}"
+    dest: "{{ landing_dir }}/bin/landing"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Reiniciar landing
+
+- name: Comprobar que el binario arranca y su contenido es valido
+  ansible.builtin.command: "{{ landing_dir }}/bin/landing check"
+  changed_when: false
+
+- name: Variables de entorno (con secretos)
+  ansible.builtin.template:
+    src: landing.env.j2
+    dest: /etc/landing/landing.env
+    owner: root
+    group: "{{ landing_user }}"
+    mode: "0640"
+  notify: Reiniciar landing
+
+- name: Unidad de systemd
+  ansible.builtin.template:
+    src: landing.service.j2
+    dest: /etc/systemd/system/landing.service
+    mode: "0644"
+  notify: Reiniciar landing
+
+- name: Arrancar la web
+  ansible.builtin.systemd:
+    name: landing
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Aplicar reinicios pendientes antes de comprobar
+  ansible.builtin.meta: flush_handlers
+
+- name: Comprobar que responde y llega a la base de datos
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ landing_port }}/healthz"
+    return_content: true
+  register: landing_health
+  until: landing_health.status == 200 and landing_health.content == 'ok'
+  retries: 10
+  delay: 2

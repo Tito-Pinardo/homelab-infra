@@ -1,8 +1,16 @@
-"""Cronos: lectura y escritura de eventos en Google Calendar.
+"""
+Cronos - Google Calendar (cuenta admin@example.org), lectura y
+escritura de eventos. OAuth "TV y dispositivos de entrada limitada"
+(device flow): sin URL de callback, encaja con un CT sin navegador. La
+autorizacion inicial es un paso manual UNICO (cronos_authorize.py, el
+usuario visita una URL y teclea un codigo desde cualquier navegador -
+este script nunca ve ni pide la contrasena de Google). Despues, el
+access token se renueva solo con el refresh_token guardado en disco.
 
-Uso el flujo OAuth de dispositivo, que no necesita URL de callback. Tras la
-autorizacion inicial (cronos_authorize.py) el token se renueva solo.
-Las horas que recibo se interpretan en hora local.
+Todas las fechas/horas que create_event recibe se asumen hora local de
+Madrid - se le pasa el nombre de la zona horaria a la API de Google en
+vez de convertir nosotros mismos a UTC, para no arriesgar un calculo de
+offset (DST) mal hecho.
 """
 import json
 import os
@@ -31,42 +39,43 @@ class CronosNoAutorizado(Exception):
 
 
 def load_token() -> dict:
-    """Devuelve el token de Google Calendar guardado, o falla si aun no se ha autorizado."""
     ...
 
 
 def save_token(data: dict):
-    """Guarda el token de Google Calendar."""
     ...
 
 
 def _access_token() -> str:
-    """Devuelve un token de acceso valido, renovandolo si hace falta."""
     ...
 
 
 def _headers() -> dict:
-    """Devuelve las cabeceras autenticadas para la API de Calendar."""
     ...
 
 
 def list_events(dias_adelante: int = 7) -> list[dict]:
-    """Devuelve los eventos de los proximos dias."""
     ...
 
 
 def _to_utc_z(dt_local: datetime) -> str:
-    """Convierte una hora local a UTC en formato de la API."""
+    """dt_local: naive, se asume hora de Madrid - localizado con zoneinfo (no
+    a mano) para que el DST no lo estropee, mismo motivo que TIMEZONE arriba."""
     ...
 
 
 def find_overlapping(inicio_dt: datetime, fin_dt: datetime, exclude_event_id: str | None = None) -> list[dict]:
-    """Devuelve los eventos existentes que se solapan con un intervalo."""
+    """Eventos ya existentes que se solapan con [inicio_dt, fin_dt). Los
+    eventos de todo el dia (sin "dateTime", solo "date") no cuentan como
+    solape de horario."""
     ...
 
 
 def limpiar_titulo(titulo: str, maximo: int = 200) -> str:
-    """Limpia un titulo de evento."""
+    """Un titulo sacado de un correo puede traer saltos de linea, dobles
+    espacios o venir enorme. En el calendario eso se ve mal (y Google lo
+    corta donde le parece), asi que se normaliza aqui: una sola linea,
+    espacios simples y un corte limpio si se pasa de largo."""
     ...
 
 
@@ -79,7 +88,19 @@ def create_event(
     categoria: str | None = None,
     lugar: str = "",
 ) -> dict:
-    """Crea un evento, avisando si se solapa con otro salvo que se fuerce."""
+    """inicio_local: "YYYY-MM-DDTHH:MM:SS" en hora de Madrid (sin offset -
+    lo pone Google al indicarle timeZone explicitamente).
+
+    Antes de crear comprueba solapamiento con eventos existentes - si hay y
+    no se pide forzar=True, no crea nada y devuelve el conflicto para que
+    quien llame (el modelo) se lo plantee al usuario en vez de decidir solo.
+
+    `categoria` (cine/restaurante/viaje/...) se guarda en extendedProperties
+    - metadata estructurada para poder buscar despues ("mi proxima
+    pelicula") sin depender de que el titulo/descripcion contenga esa
+    palabra literal. De momento solo la rellena extract_calendar_event
+    (creacion automatica desde correo, que ya hace una llamada de LLM
+    dedicada y puede pedirla sin coste extra) - ver runbook Fase 11/12."""
     ...
 
 
@@ -91,7 +112,11 @@ def create_recurring_event(
     descripcion: str = "",
     forzar: bool = False,
 ) -> dict:
-    """Crea un evento semanal periodico."""
+    """Serie semanal de verdad (RRULE nativa de Google Calendar), no N
+    eventos sueltos - mismo dia de la semana que primer_inicio_local, cada
+    semana, hasta hasta_fecha ("YYYY-MM-DD", inclusive). Solo se comprueba
+    solapamiento de la PRIMERA ocurrencia (comprobar todas seria una
+    llamada por semana sin mucho valor real)."""
     ...
 
 
@@ -103,10 +128,12 @@ def update_event(
     descripcion: str | None = None,
     forzar: bool = False,
 ) -> dict:
-    """Modifica solo los campos indicados de un evento."""
+    """Actualiza SOLO los campos indicados (PATCH) - el resto del evento no
+    se toca. Bug real (2026-09-17): sin esto, "pedir una actualizacion" del
+    mismo evento acababa creando uno nuevo casi identico en vez de tocar
+    el que ya existia."""
     ...
 
 
 def delete_event(event_id: str) -> None:
-    """Borra un evento."""
     ...

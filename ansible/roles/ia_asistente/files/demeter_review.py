@@ -12,73 +12,81 @@ class StaleRevision(ValueError):
 
 
 def encode(value):
-    """Serializa un valor a JSON de forma estable."""
     ...
 
 
 class Inbox:
     def __init__(self, store: Store):
-        """Inicializa la bandeja de revision sobre un almacen."""
         ...
 
     def _audit(self, candidate_id, revision, actor, action, details):
-        """Registra una accion en el historial de auditoria de un candidato."""
         ...
 
     def get(self, candidate_id):
-        """Devuelve un candidato por su identificador."""
         ...
 
     @staticmethod
     def source(row):
-        """Devuelve el texto completo de un candidato: remitente, asunto, cuerpo y documentos."""
         ...
 
     def _check(self, candidate_id, revision, statuses):
-        """Comprueba que un candidato esta en la revision y estado esperados."""
         ...
 
     def ingest(self, *, account, message_id, sender, subject, body, received_on):
-        """Da de alta un correo como candidato a compra."""
         ...
 
     def process(self, candidate_id, revision):
-        """Procesa un candidato pendiente y decide si se aprueba solo o pasa a revision."""
         ...
 
     def reprocess(self, candidate_id, revision, *, actor, reason):
-        """Vuelve a poner un candidato en cola para procesarlo de nuevo."""
         ...
 
     def retry(self, candidate_id, revision, *, actor):
-        """Reintenta un candidato que fallo."""
         ...
 
     def discard(self, candidate_id, revision, *, actor, reason):
-        """Descarta un candidato."""
         ...
 
     def undo_auto(self, candidate_id, *, actor, reason, revision=None):
-        """Deshace una aprobacion automatica."""
+        """Deshace una aprobacion AUTOMATICA: la papelera de Element.
+
+        Mismo contrato que el calendario desde el 2026-09-17: lo que se crea
+        solo, se deshace con un gesto. Por eso solo actua si la ultima
+        aprobacion la hizo un actor `auto:`; una compra que confirmo una
+        persona no se toca desde el chat.
+
+        Quita la evidencia de ESTE correo. El pedido solo se borra si ya nada
+        lo respalda: si otro correo lo sostiene, tiene reembolsos o alguien
+        lo edito en la pagina, se conserva y se dice, porque borrarlo seria
+        perder datos que no vienen de este mensaje. El correo queda
+        descartado y la auditoria guarda la decision entera.
+        """
         ...
 
     def confirm_auto(self, candidate_id, revision, *, actor, reason):
-        """Confirma una aprobacion automatica."""
+        """Visto bueno de una persona a lo que aprobo la automatica.
+
+        No cambia importes ni estado: la compra ya cuenta. Solo deja
+        constancia de que alguien la ha mirado, para que salga de la lista
+        de "aprobadas solas" de la pagina.
+        """
         ...
 
     def auto_pending(self):
-        """Devuelve las aprobaciones automaticas sin confirmar."""
+        """Compras que aprobo la automatica y nadie ha confirmado todavia."""
         ...
 
     def approve_purchase(self, candidate_id, revision, *, actor, purchase, evidence,
                          reason, existing_order_id=None):
-        """Aprueba un candidato como una compra."""
         ...
 
     def approve_purchases(self, candidate_id, revision, *, actor, decisions, reason):
-        """Aprueba uno o varios pedidos de un candidato, todos o ninguno."""
+        """Confirma uno o varios pedidos revisados, todos o ninguno.
+
+        Cada decisión incluye purchase y evidence por campo; opcionalmente
+        existing_order_id para un reenvío entre cuentas. No la llama el extractor.
+        """
         ...
 
     def listing(self, status='review', limit=50):
-        """Devuelve los candidatos de un estado."""
         ...

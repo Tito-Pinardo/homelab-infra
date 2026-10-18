@@ -1,0 +1,42 @@
+# Copia publica en GitHub (runner "despliegue" del CT 123). Ver docs/publico.md.
+#
+# - Cada push a master: genera la copia saneada, pasa el control de fugas y
+#   la deja en la rama "propuesta" de tito/homelab-infra (privado). Aviso en
+#   Element con el enlace al diff. No publica nada.
+# - Publicar: a mano, Actions -> publico.yml -> Run workflow (rama master).
+#   Solo publica si la copia de master es exactamente la propuesta revisada.
+name: Copia publica
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  PY: /home/agent/.local/share/pipx/venvs/ansible-core/bin/python
+  PUBLICO: /home/agent/.infra-tf/publico/infra-tf
+
+jobs:
+  propuesta:
+    if: github.event_name == 'push'
+    runs-on: despliegue
+    steps:
+      - name: Generar, comprobar y proponer
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          [ -d "$PUBLICO/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$PUBLICO"
+          git -C "$PUBLICO" fetch -q --prune origin
+          git -C "$PUBLICO" checkout -q -f --detach "${{ github.sha }}"
+          "$PY" "$PUBLICO/scripts/publico/publicar.py" propuesta "${{ github.sha }}"
+
+  publicar:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: despliegue
+    steps:
+      - name: Publicar en GitHub
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          [ -d "$PUBLICO/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$PUBLICO"
+          git -C "$PUBLICO" fetch -q --prune origin
+          git -C "$PUBLICO" checkout -q -f --detach "${{ github.sha }}"
+          "$PY" "$PUBLICO/scripts/publico/publicar.py" publicar "${{ github.sha }}"

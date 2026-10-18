@@ -22,7 +22,8 @@ services:
       - db
       - broker
     ports:
-      # Solo en loopback: nginx con TLS es la unica entrada.
+      # Solo loopback, nunca en la interfaz LAN - nginx (8443, TLS) es la
+      # unica puerta de entrada real, igual que en el CT 133 original.
       - "127.0.0.1:8000:8000"
     volumes:
       - /opt/paperless/data:/usr/src/paperless/data

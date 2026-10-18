@@ -1,0 +1,25 @@
+# Generado por Ansible (role forgejo, tasks/despliegue_root.yml) - no editar a mano.
+# Runner de despliegue del CT 123: corre como agent (estado de Terraform,
+# vault y claves SSH). Solo para el repo de infra-tf. Ver docs/despliegue.md.
+log:
+  level: info
+
+runner:
+  file: /home/agent/.infra-tf/runner/.runner
+  capacity: 1
+  # Un despliegue con varios playbooks puede tardar.
+  # 3 h: la prueba de restauracion semanal restaura ~50 GB a ~10 MB/s.
+  timeout: 3h
+  envs:
+    PATH: /home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin
+    LC_ALL: C.UTF-8
+    HOME: /home/agent
+    TF_PLUGIN_CACHE_DIR: /home/agent/.terraform.d/plugin-cache
+  labels:
+    - "despliegue:host"
+
+cache:
+  enabled: false
+
+host:
+  workdir_parent: /home/agent/.infra-tf/trabajos

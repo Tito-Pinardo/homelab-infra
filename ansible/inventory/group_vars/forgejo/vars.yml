@@ -1,0 +1,64 @@
+# CT 126 "forgejo" - servidor git con interfaz (git.home.arpa). Ver
+# lxc-forgejo.tf y docs/forgejo.md.
+
+# Rama LTS: menos saltos de version. Al actualizar, cambiar version y suma
+# (fichero .sha256 de la release en codeberg.org/forgejo/forgejo).
+# renovate: datasource=forgejo-releases depName=forgejo/forgejo registryUrl=https://codeberg.org extractVersion=^v(?<version>.+)$
+forgejo_version: "15.0.10"
+forgejo_sha256: "eeb96095f610b6fbcd768e11b94cb345923f580d550d9cba44ee690d2a61daab"
+
+forgejo_http_port: 3000
+# SSH propio de Forgejo para git. El 22 sigue siendo el sshd de administracion.
+forgejo_ssh_port: 2222
+forgejo_domain: "git.home.arpa"
+
+# Caddy de dockge: unico origen del puerto web aparte del runner.
+forgejo_proxy_ip: "192.0.2.243"
+forgejo_runner_ip: "192.0.2.236"
+# Runner de despliegue (CT 123): entra directo al puerto web, sin Authelia.
+forgejo_despliegue_ip: "192.0.2.237"
+
+# Administracion (sshd) y git por SSH.
+forgejo_ssh_allowed_sources: []  # se define en el inventario privado
+
+forgejo_admin_user: "tito"
+forgejo_admin_email: "tito@git.home.arpa"
+forgejo_admin_password: "{{ vault_forgejo_admin_password }}"
+
+# Repo de infra-tf en Forgejo (el origen desde el 14-10).
+forgejo_repo_infra: "infra-tf"
+forgejo_repo_infra_descripcion: "infra-tf: Terraform + Ansible del homelab. Cambios por PR (docs/despliegue.md)"
+
+# Repo de la web personal (origen desde el 14-10): CI en el CT 127 y
+# despliegue continuo desde el CT 123, que tambien publica la copia de GitHub.
+# Ver tasks/landing.yml y docs/landing.md.
+forgejo_repo_landing: "landing"
+forgejo_repo_landing_descripcion: "Web personal: CI y despliegue continuo; la copia publica de GitHub sale de aqui"
+forgejo_repo_publico: "homelab-infra"
+forgejo_repo_publico_descripcion: "Copia publica de infra-tf: lo publicado en GitHub (main) y la propuesta pendiente de revisar"
+
+# Avisos del CI en Element: webhook de Forgejo -> ci-avisos (loopback) ->
+# relay E2EE del CT de Synapse -> sala de alertas.
+forgejo_ci_avisos_port: 9010
+forgejo_ci_avisos_relay_url: "http://192.0.2.254:8009"
+forgejo_ci_avisos_events: [action_run_success, action_run_failure, action_run_recover]
+
+# Claves SSH del usuario tito en Forgejo: los equipos que empujan a infra-tf
+# (Forgejo es el origen desde el 14-10). Las mismas que locals.tf mas la del
+# usuario agent del CT 123, que la añade el playbook.
+forgejo_admin_ssh_keys:
+  - title: "lucifer (PC)"
+    # yamllint disable-line rule:line-length
+    key: "ssh-rsa AAAA...clave-publica usuario@equipo"
+  - title: "Mac"
+    # yamllint disable-line rule:line-length
+    key: "ssh-rsa AAAA...clave-publica usuario@equipo"
+
+# master protegida: sin pushes directos, solo PR con el CI en verde (los
+# contextos del workflow "CI"). Ver docs/despliegue.md.
+forgejo_rama_protegida: master
+forgejo_checks_obligatorios: ["CI / *"]
+
+# Se reinicia si cambia una raiz de la CA de casa (rol ca_casa): OIDC con
+# auth.home.arpa.
+ca_casa_reiniciar: [forgejo]

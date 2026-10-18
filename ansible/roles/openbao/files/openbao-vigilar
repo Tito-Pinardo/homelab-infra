@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""
+Avisa en Element cuando OpenBao (CT 128) se queda sellado (tras un reinicio
+hay que desellarlo a mano) y cuando vuelve a estar desellado. Un aviso por
+cambio, no uno cada vez. Cron del usuario agent; ver docs/openbao.md.
+"""
+import json
+import ssl
+import urllib.request
+from pathlib import Path
+
+DIR = Path.home() / ".infra-tf"
+MARCA = DIR / "openbao" / "avisado-sellado"
+CTX = ssl.create_default_context(cafile=str(DIR / "openbao" / "ca.pem"))
+
+
+def avisar(texto):
+    ...
+
+
+try:
+    with urllib.request.urlopen("https://192.0.2.234:8200/v1/sys/seal-status", timeout=10, context=CTX) as r:
+        sellado = json.load(r)["sealed"]
+except OSError:
+    sellado = None  # caido o sin red: lo vigila Zabbix, aqui no se insiste
+
+if sellado and not MARCA.exists():
+    avisar("**🔒 OpenBao está sellado**\nSin desellar no hay despliegues ni playbooks. "
+           "Desella en https://bao.home.arpa con la clave de tu gestor de contraseñas.")
+    MARCA.touch()
+elif sellado is False and MARCA.exists():
+    avisar("**🔓 OpenBao vuelve a estar desellado**")
+    MARCA.unlink()

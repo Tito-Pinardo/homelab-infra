@@ -3,5 +3,8 @@ storage:
   snapshots_path: /var/lib/qdrant/snapshots
 
 service:
-  # API key como segunda capa ademas del firewall.
+  # Sin esto, cualquiera con red hasta el puerto 6333 podria leer/escribir
+  # en la base semantica - el firewall de Proxmox ya restringe el origen,
+  # pero la API key es la segunda capa (asi funciona igual si algun dia se
+  # relaja el firewall por error).
   api_key: "{{ vault_qdrant_api_key }}"

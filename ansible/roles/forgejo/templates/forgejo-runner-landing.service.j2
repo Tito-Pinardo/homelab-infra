@@ -1,0 +1,17 @@
+# Generado por Ansible (role forgejo, tasks/landing_cd_root.yml) - no editar a mano.
+[Unit]
+Description=Forgejo Runner de despliegue de la web personal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/.landing-cd/runner
+Environment=HOME=/home/agent
+ExecStart=/usr/local/bin/forgejo-runner daemon --config /etc/forgejo-runner-landing/config.yml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

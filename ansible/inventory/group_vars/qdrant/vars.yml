@@ -1,3 +1,5 @@
-# Version fijada a proposito: una release rota de Qdrant no rompe un
-# despliegue futuro.
-qdrant_version: "1.19.1"
+# Version fijada a proposito (igual que traefik_version): asi el role es
+# reproducible y una release rota de Qdrant no rompe un despliegue futuro
+# sin que nos demos cuenta.
+# renovate: datasource=docker depName=qdrant/qdrant extractVersion=^v(?<version>.+)$
+qdrant_version: "1.19.2"

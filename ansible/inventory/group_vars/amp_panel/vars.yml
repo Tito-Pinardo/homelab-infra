@@ -1,6 +1,10 @@
-# AMP. Ver lxc-amp.tf y ansible/roles/amp.
+# AMP (CT 121 "amp-new", sustituye al CT 108). Ver lxc-amp.tf y
+# ansible/roles/amp para el porque de cada pieza (Docker, UFW
+# auto-sincronizado por AMP, pre-pull de imagenes para mitigar el bug de
+# timeout conocido).
 amp_lan_subnet: "192.0.2.0/24"
 amp_panel_port: "8080"
 
-# Firewall propio del CT en Proxmox, ademas del UFW interno (dos capas).
+# Firewall propio del CT en Proxmox (SSH restringido a PC+VPN) - redundante
+# a proposito con el UFW interno (dos capas, igual que el CT108 original).
 amp_ssh_allowed_sources: []  # se define en el inventario privado

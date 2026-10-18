@@ -1,0 +1,18 @@
+---
+# Raiz de la CA de casa (OpenBao, docs/ca-casa.md) en el almacen del sistema:
+# curl, git, Python, apt... se fian de los certificados de *.home.arpa.
+- name: Paquete de certificados
+  ansible.builtin.package:
+    name: ca-certificates
+    state: present
+
+# La de Caddy mientras siga sirviendo *.home.arpa con su CA interna
+# (caddy_ca_casa: false): OIDC y demas clientes llegan a auth.home.arpa con
+# cualquiera de las dos.
+- name: Raices de la CA de casa y de Caddy
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/share/ca-certificates/{{ item }}"
+    mode: "0644"
+  loop: [casa-raiz.crt, caddy-raiz.crt]
+  notify: Actualizar los certificados del sistema

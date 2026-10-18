@@ -1,0 +1,17 @@
+#!/bin/sh
+# Gestionado por Ansible (roles/amp/tasks/ufw.yml). Quita cualquier resto de
+# ufw (saltos desde INPUT/OUTPUT/FORWARD y sus cadenas) para que ufw-init las
+# cree todas desde cero. Si encuentra solo algunas (le paso al CT el 17/18-10),
+# se limita a vaciarlas, falla a medias y deja la entrada en DROP: el CT se
+# queda sin red.
+for t in iptables ip6tables; do
+  for c in INPUT OUTPUT FORWARD; do
+    $t -S "$c" 2>/dev/null | grep -- '-j ufw' | sed 's/^-A/-D/' | while read -r regla; do
+      # shellcheck disable=SC2086
+      $t $regla
+    done
+  done
+  for c in $($t -S 2>/dev/null | awk '/^-N ufw/{print $2}'); do $t -F "$c"; done
+  for c in $($t -S 2>/dev/null | awk '/^-N ufw/{print $2}'); do $t -X "$c"; done
+done
+exit 0

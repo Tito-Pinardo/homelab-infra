@@ -1,7 +1,8 @@
 ---
-# Alpine: usa apk en vez de apt. La plantilla de Proxmox no trae sshd ni
-# python3, asi que ambos se instalan a mano con pct exec antes de que
-# Ansible pueda conectar. crond viene activo de serie.
+# Alpine, no Debian - primer role del repo con apk en vez de apt. La
+# plantilla base de Proxmox no trae sshd ni python3 (bootstrap de ambos
+# hecho a mano via pct exec antes de que Ansible pudiera conectar siquiera -
+# ver runbook). crond SI viene activo de serie en Alpine.
 
 - name: Instalar bash, curl, jq y certificados (Alpine no trae nada de esto)
   community.general.apk:

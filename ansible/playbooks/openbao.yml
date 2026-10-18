@@ -1,0 +1,46 @@
+---
+# OpenBao (CT 128) + bao.home.arpa en Caddy + cliente del CT 123 (copias en
+# PBS, playbooks/pbs.yml). Ver docs/openbao.md. A mano: reiniciar OpenBao lo sella, y el
+# cliente toca el CT 123.
+#   ansible-playbook playbooks/openbao.yml
+# La primera vez, despues: scripts/openbao/configurar.sh (inicializa y
+# configura) y otra vez este playbook (activa el cliente).
+
+- name: OpenBao
+  hosts: openbao
+  become: true
+  roles:
+    - openbao
+
+# El certificado tiene que estar antes de que cualquier playbook recargue el
+# Caddyfile (el bloque de bao.home.arpa lo fija); por eso va aqui y no en
+# arr_stack.
+- name: Publicar bao.home.arpa en el Caddy de dockge
+  hosts: arr_stack
+  become: true
+  tasks:
+    - name: Certificado de OpenBao para Caddy
+      ansible.builtin.copy:
+        content: "{{ hostvars['openbao'].openbao_cert.content | b64decode }}"
+        dest: "{{ hostvars['openbao'].openbao_ca_en_caddy }}"
+        mode: "0644"
+
+    - name: Aplicar el Caddyfile sin reiniciar el stack
+      ansible.builtin.include_role:
+        name: arr_stack
+        tasks_from: caddy_recargar
+
+- name: Cliente de OpenBao en el CT 123
+  hosts: agents
+  gather_facts: false
+  # Desde el propio CT 123, como agent.
+  connection: local
+  tasks:
+    - name: Cliente bao, scripts, vigilancia y (si ya hay AppRole) la contraseña del vault
+      ansible.builtin.include_role:
+        name: openbao
+        tasks_from: cliente
+
+# Copias: el CT de OpenBao entra en la tarea diaria de PBS (playbooks/pbs.yml,
+# docs/copias.md); los datos van cifrados y sin la clave de desbloqueo no
+# sirven. La copia suelta a lb2-copias se retiro el 15-10.

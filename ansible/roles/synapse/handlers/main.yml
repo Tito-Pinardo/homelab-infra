@@ -1,4 +1,9 @@
 ---
+# Primero: los handlers corren en este orden y el reinicio necesita la unidad recargada.
+- name: recargar systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: reiniciar synapse
   ansible.builtin.systemd:
     name: matrix-synapse

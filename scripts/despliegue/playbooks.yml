@@ -1,0 +1,34 @@
+# Que playbooks puede lanzar solo el despliegue (ver docs/despliegue.md).
+#
+# El despliegue elige los playbooks por los ficheros que cambian entre lo
+# ultimo desplegado y lo nuevo (rol, playbook o group_vars). Los de esta
+# lista NUNCA se lanzan solos: salen en el resumen como "a mano", con el
+# motivo, y se lanzan desde el CT 123 como siempre.
+manuales:
+  agents-access.yml: "se lanza desde lucifer"
+  agents.yml: "toca el CT 123, donde corre el propio despliegue"
+  agents-digest.yml: "toca el CT 123, donde corre el propio despliegue"
+  forgejo.yml: "reinicia Forgejo y el runner de despliegue"
+  openbao.yml: "reiniciar OpenBao lo sella, y el cliente toca el CT 123"
+  pbs.yml: "toca el host Proxmox (almacen, tarea de copias, avisos)"
+  ca-casa.yml: "toca el host Proxmox y el CT 123 (pct)"
+  sso.yml: "toca el host Proxmox y reinicia Authelia"
+  paperless.yml: "fuera del alcance de cualquier automatismo (decision de Tito)"
+  update-all.yml: "mantenimiento, no configuracion"
+  update-containers.yml: "mantenimiento, no configuracion"
+  dockge-phase1.yml: "migracion de septiembre, historica"
+  dockge-phase2.yml: "migracion de septiembre, historica"
+  dockge-phase3.yml: "migracion de septiembre, historica"
+  traefik.yml: "CT de pruebas retirado"
+  okd-dashboard.yml: "OKD apagado"
+  pve-dns.yml: "host Proxmox"
+  pve-firewall-enable.yml: "host Proxmox"
+  pve-write-cache.yml: "host Proxmox"
+
+# Hosts que ninguna ejecucion toca, aunque el playbook sea de toda la flota:
+# a cada ansible-playbook se le añade !<host> en el --limit. Si un playbook
+# solo afectaba a estos hosts, pasa a "a mano".
+excluir_hosts:
+  - paperless
+  # El CT 123: ahi corre el propio despliegue (y los agentes).
+  - agents

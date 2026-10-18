@@ -1,9 +1,12 @@
-# Variables publicas del grupo synapse. Los secretos van cifrados en
-# vault.yml.
+# Variables PUBLICAS del grupo synapse - sin secretos, va a git.
+# Los valores reales (contraseña de BD, registration_shared_secret) viven
+# cifrados en vault.yml (mismo directorio), igual que en traefik_prod.
 
-# server_name queda grabado en cada Matrix ID: cambiarlo obliga a recrear
-# todas las cuentas. Uso un subdominio propio que coincide con el host
-# publico, asi no hace falta delegacion .well-known.
+# server_name queda grabado para siempre en cada Matrix ID (@usuario:server_name)
+# - cambiarlo despues obliga a recrear todas las cuentas. Se usa un
+# subdominio propio (no el apex example.org) para no pisar nada mas que
+# ya vive ahi, y porque coincide con el host publico -> no hace falta
+# delegacion .well-known.
 synapse_server_name: "matrix.example.org"
 
 synapse_db_name: "synapse"
@@ -12,7 +15,8 @@ synapse_db_password: "{{ vault_synapse_db_password }}"
 
 synapse_registration_shared_secret: "{{ vault_synapse_registration_shared_secret }}"
 
-# Privado a proposito: sin federacion y con registro cerrado (las cuentas se
-# crean a mano con register_new_matrix_user).
+# Privado a proposito: sin federacion (no se habla con otros homeservers) y
+# registro cerrado (las cuentas se crean a mano con register_new_matrix_user,
+# usando registration_shared_secret de arriba - ver runbook).
 synapse_enable_registration: false
 synapse_federation_enabled: false

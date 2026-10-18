@@ -1,6 +1,7 @@
 ---
-# Seerr (solicitudes de contenido). Sin secretos propios. Los datos se
-# restauran aparte.
+# Seerr (solicitudes de contenido) - sustituye al stack manual en el CT106
+# original. Sin secretos propios. Los datos (/opt/stacks/seerr/config) se
+# copian 1:1 desde el CT106 en un paso manual aparte.
 
 - name: Crear directorio del stack
   ansible.builtin.file:

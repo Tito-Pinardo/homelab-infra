@@ -127,51 +127,45 @@ MIGRATIONS = (
 
 
 def required(*values):
-    """Valida que los identificadores no esten vacios."""
     ...
 
 
 def amount(value, minimum=0):
-    """Valida un importe entero en unidades minimas."""
     ...
 
 
 def day(value):
-    """Valida una fecha en formato YYYY-MM-DD."""
     ...
 
 
 class Store:
     def __init__(self, path):
-        """Abre la base de datos y aplica las migraciones pendientes."""
         ...
 
     def close(self):
-        """Cierra la base de datos."""
         ...
 
     @contextmanager
     def transaction(self):
-        """Contexto de transaccion, admite anidamiento."""
         ...
 
     def _evidence(self, account, message_id, order_id, kind, allow_multiple=False):
-        """Registra un correo como evidencia de un pedido."""
         ...
 
     def purchase(self, *, account, merchant, reference, purchased_on,
                  currency, total_minor, message_id, allow_multiple=False):
-        """Registra una compra."""
         ...
 
     def delivery_evidence(self, *, account, message_id, order_id, kind):
-        """Registra una evidencia de envio o entrega de un pedido."""
         ...
 
     def refund(self, *, account, message_id, order_id, reference, received_on, amount_minor):
-        """Registra una devolucion."""
         ...
 
     def summary(self, start, end):
-        """Devuelve el gasto de un periodo: compras menos devoluciones."""
+        """Compras detectadas menos devoluciones recibidas; intervalo [inicio, fin).
+
+        No representa saldo bancario ni confirma el cobro de una compra.
+        Cada moneda se devuelve separada, sin conversión implícita.
+        """
         ...

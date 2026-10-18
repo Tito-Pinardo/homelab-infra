@@ -1,0 +1,17 @@
+# Generado por Ansible (role forgejo, tasks/despliegue_root.yml) - no editar a mano.
+[Unit]
+Description=Forgejo Runner de despliegue de infra-tf
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/.infra-tf/runner
+Environment=HOME=/home/agent
+ExecStart=/usr/local/bin/forgejo-runner daemon --config /etc/forgejo-runner-despliegue/config.yml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

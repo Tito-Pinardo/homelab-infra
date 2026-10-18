@@ -1,6 +1,8 @@
 ---
-# Obsidian (mis notas del homelab). config/ y vault/ se restauran aparte; este
-# rol no los toca.
+# Obsidian (wiki del homelab, memoria de este proyecto) - sustituye al
+# stack manual en el CT106 original. `config/` y `vault/` se copian 1:1
+# desde el CT106 en un paso manual aparte - maxima cautela con este, es la
+# fuente de verdad de la documentacion del propio proyecto de migracion.
 
 - name: Crear directorio del stack
   ansible.builtin.file:
@@ -31,7 +33,7 @@
     state: present
     pull: missing
 
-# Acceso de solo lectura para mantener actualizada la busqueda semantica.
+# Necesario para mantener actualizada la base semántica tras migrar este CT.
 - name: Instalar rsync y su comando restringido rrsync
   ansible.builtin.apt:
     name: rsync
@@ -44,7 +46,7 @@
   ansible.builtin.lineinfile:
     path: /root/.ssh/authorized_keys
     regexp: "{{ obsidian_sync_public_key.split()[1] | regex_escape }}"
-    line: 'restrict,from="192.0.2.27",command="/usr/bin/rrsync -ro /opt/stacks/obsidian/vault" {{ obsidian_sync_public_key }}'
+    line: 'restrict,from="192.0.2.247",command="/usr/bin/rrsync -ro /opt/stacks/obsidian/vault" {{ obsidian_sync_public_key }}'
     create: true
     owner: root
     group: root

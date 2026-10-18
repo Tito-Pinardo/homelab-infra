@@ -1,0 +1,540 @@
+---
+# Forgejo en el CT 126 (ver docs/forgejo.md): binario oficial, SQLite y
+# servicio de systemd. Al final deja creados el usuario admin, el repo de
+# infra-tf, la clave del mirror y el registro del runner.
+
+# Firewall propio del CT, con policy_in DROP (ver la plantilla).
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    forgejo_fw_content: "{{ lookup('template', 'forgejo.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: forgejo_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+- name: Escribir el firewall propio del CT
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ forgejo_fw_content }}"
+    stdin_add_newline: false
+  # Solo corre cuando el contenido es distinto (ver el when).
+  changed_when: true
+  when: >
+    not forgejo_fw_current.content is defined or
+    (forgejo_fw_current.content | default('') | b64decode) != forgejo_fw_content
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# ---------------------------------------------------------------- instalacion
+
+- name: Paquetes
+  ansible.builtin.apt:
+    name: [git, sqlite3, ca-certificates]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Usuario de sistema git
+  ansible.builtin.user:
+    name: git
+    system: true
+    shell: /bin/bash
+    home: /var/lib/forgejo
+    create_home: false
+
+- name: Directorios
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: git
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /var/lib/forgejo, owner: git, mode: "0750" }
+    - { path: /var/lib/forgejo/custom, owner: git, mode: "0750" }
+    - { path: /var/lib/forgejo/data, owner: git, mode: "0750" }
+    - { path: /etc/forgejo, owner: root, mode: "0750" }
+
+# Un fichero por version: actualizar = cambiar forgejo_version/sha256 y el
+# enlace apunta al nuevo; volver atras = lo mismo con la anterior.
+- name: Descargar el binario (suma fijada en group_vars)
+  ansible.builtin.get_url:
+    url: "https://codeberg.org/forgejo/forgejo/releases/download/v{{ forgejo_version }}/forgejo-{{ forgejo_version }}-linux-amd64"
+    dest: "/usr/local/bin/forgejo-{{ forgejo_version }}"
+    checksum: "sha256:{{ forgejo_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enlazar la version en uso
+  ansible.builtin.file:
+    src: "/usr/local/bin/forgejo-{{ forgejo_version }}"
+    dest: /usr/local/bin/forgejo
+    state: link
+  notify: Reiniciar forgejo
+
+# Se generan una vez en el CT y no salen de el. Cambiarlos invalida las
+# sesiones abiertas, nada mas.
+- name: Generar los secretos internos (solo la primera vez)
+  ansible.builtin.shell:
+    cmd: "umask 027 && /usr/local/bin/forgejo generate secret {{ item.kind }} > /etc/forgejo/{{ item.file }}"
+    creates: "/etc/forgejo/{{ item.file }}"
+  loop:
+    - { kind: SECRET_KEY, file: secret_key }
+    - { kind: INTERNAL_TOKEN, file: internal_token }
+    - { kind: JWT_SECRET, file: jwt_secret }
+  notify: Reiniciar forgejo
+
+- name: Permisos de los secretos
+  ansible.builtin.file:
+    path: "/etc/forgejo/{{ item }}"
+    owner: root
+    group: git
+    mode: "0640"
+  loop: [secret_key, internal_token, jwt_secret]
+
+- name: Configuracion
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: /etc/forgejo/app.ini
+    owner: root
+    group: git
+    mode: "0640"
+  notify: Reiniciar forgejo
+
+- name: Unidad de systemd
+  ansible.builtin.template:
+    src: forgejo.service.j2
+    dest: /etc/systemd/system/forgejo.service
+    mode: "0644"
+  notify: Reiniciar forgejo
+
+- name: Arrancar Forgejo
+  ansible.builtin.systemd:
+    name: forgejo
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Aplicar reinicios pendientes antes de comprobar
+  ansible.builtin.meta: flush_handlers
+
+- name: Esperar a que responda
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/healthz"
+  register: forgejo_health
+  until: forgejo_health.status == 200
+  retries: 15
+  delay: 2
+
+# ---------------------------------------------------------------- contenido
+
+- name: Comprobar si existe el admin
+  ansible.builtin.command:
+    argv: [/usr/local/bin/forgejo, --config, /etc/forgejo/app.ini, admin, user, list, --admin]
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  register: forgejo_admins
+  changed_when: false
+
+- name: Crear el admin
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo
+      - --config
+      - /etc/forgejo/app.ini
+      - admin
+      - user
+      - create
+      - --admin
+      - --username
+      - "{{ forgejo_admin_user }}"
+      - --email
+      - "{{ forgejo_admin_email }}"
+      - --password
+      - "{{ forgejo_admin_password }}"
+      - --must-change-password=false
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  when: forgejo_admin_user not in forgejo_admins.stdout.split()
+  changed_when: true
+  no_log: true
+
+- name: Comprobar si existe el repo de infra-tf
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: forgejo_repo
+  no_log: true
+
+- name: Crear el repo de infra-tf (privado)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/user/repos"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ forgejo_repo_infra }}"
+      private: true
+      default_branch: master
+      description: "{{ forgejo_repo_infra_descripcion }}"
+    status_code: [201]
+  when: forgejo_repo.status == 404
+  changed_when: true
+  no_log: true
+
+- name: Activar Actions y poner la descripcion del repo
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}"
+    method: PATCH
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      has_actions: true
+      description: "{{ forgejo_repo_infra_descripcion }}"
+  changed_when: false
+  no_log: true
+
+# Clave del CT 123 para el repo: hoy solo la usa el cron que pone al dia el
+# repo central de solo lectura (tasks/central.yml). La publica la pasa el
+# playbook desde ese CT.
+- name: Claves de despliegue del repo
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/keys"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+  register: forgejo_keys
+  when: forgejo_mirror_pubkey | default('') | length > 0
+  no_log: true
+
+- name: Autorizar la clave del mirror
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/keys"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      title: "mirror desde el CT 123"
+      key: "{{ forgejo_mirror_pubkey }}"
+      read_only: false
+    status_code: [201]
+  when:
+    - forgejo_mirror_pubkey | default('') | length > 0
+    - (forgejo_mirror_pubkey.split()[1]) not in (forgejo_keys.json | map(attribute='key') | join(' '))
+  changed_when: true
+  no_log: true
+
+# Equipos que empujan a infra-tf con la cuenta tito (Forgejo es el origen).
+- name: Claves SSH del admin
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/user/keys"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+  register: forgejo_user_keys
+  no_log: true
+
+- name: Dar de alta las claves que falten
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/user/keys"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      title: "{{ item.title }}"
+      key: "{{ item.key }}"
+    status_code: [201]
+  loop: "{{ forgejo_admin_ssh_keys + (forgejo_extra_ssh_keys | default([])) }}"
+  loop_control:
+    label: "{{ item.title }}"
+  when: item.key.split()[1] not in (forgejo_user_keys.json | map(attribute='key') | join(' '))
+  changed_when: true
+
+# ---------------------------------------------------------------- runner
+
+# Registro "offline": Forgejo y el runner comparten un secreto generado aqui
+# una vez. Repetir el registro con el mismo secreto no cambia nada.
+- name: Generar el secreto del runner (solo la primera vez)
+  ansible.builtin.shell:
+    cmd: "umask 077 && openssl rand -hex 20 > /etc/forgejo/runner_secret"
+    creates: /etc/forgejo/runner_secret
+
+- name: Leer el secreto del runner
+  ansible.builtin.slurp:
+    src: /etc/forgejo/runner_secret
+  register: forgejo_runner_secret_raw
+  no_log: true
+
+- name: Guardar el secreto para el play del runner
+  ansible.builtin.set_fact:
+    forgejo_runner_secret: "{{ forgejo_runner_secret_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Registrar el runner en Forgejo
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo
+      - --config
+      - /etc/forgejo/app.ini
+      - forgejo-cli
+      - actions
+      - register
+      - --name
+      - forgejo-runner
+      # Sin etiquetas el runner no casa con ningun runs-on (pasó el 14-10).
+      - --labels
+      - "{{ hostvars['forgejo-runner'].forgejo_runner_labels | join(',') }}"
+      - --secret
+      - "{{ forgejo_runner_secret }}"
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  changed_when: false
+  no_log: true
+
+# Runner de despliegue (CT 123), solo para este repo. Mismo registro offline
+# que el del CI, con su propio secreto.
+- name: Generar el secreto del runner de despliegue (solo la primera vez)
+  ansible.builtin.shell:
+    cmd: "umask 077 && openssl rand -hex 20 > /etc/forgejo/runner_despliegue_secret"
+    creates: /etc/forgejo/runner_despliegue_secret
+
+- name: Leer el secreto del runner de despliegue
+  ansible.builtin.slurp:
+    src: /etc/forgejo/runner_despliegue_secret
+  register: forgejo_despliegue_secret_raw
+  no_log: true
+
+- name: Guardar el secreto para el play del CT 123
+  ansible.builtin.set_fact:
+    forgejo_despliegue_secret: "{{ forgejo_despliegue_secret_raw.content | b64decode | trim }}"
+  no_log: true
+
+- name: Registrar el runner de despliegue (solo para el repo de infra-tf)
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo
+      - --config
+      - /etc/forgejo/app.ini
+      - forgejo-cli
+      - actions
+      - register
+      - --name
+      - agents-despliegue
+      - --scope
+      - "{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}"
+      - --labels
+      - despliegue
+      - --secret
+      - "{{ forgejo_despliegue_secret }}"
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  changed_when: false
+  no_log: true
+
+# ---------------------------------------------------------------- renovate
+
+# Bot de Renovate (docs/renovate.md): usuario propio con escritura solo en
+# infra-tf. Abre PRs como cualquiera; master sigue protegida.
+- name: Comprobar si existe el usuario renovate
+  ansible.builtin.command:
+    argv: [/usr/local/bin/forgejo, --config, /etc/forgejo/app.ini, admin, user, list]
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  register: forgejo_usuarios
+  changed_when: false
+
+- name: Crear el usuario renovate (contraseña aleatoria, solo entra con token)
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo
+      - --config
+      - /etc/forgejo/app.ini
+      - admin
+      - user
+      - create
+      - --username
+      - renovate
+      - --email
+      - renovate@git.home.arpa
+      - --random-password
+      - --must-change-password=false
+  become: true
+  become_user: git
+  become_method: ansible.builtin.su
+  when: "'renovate' not in forgejo_usuarios.stdout.split()"
+  changed_when: true
+  no_log: true
+
+- name: Renovate con escritura en infra-tf
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/collaborators/renovate"
+    method: PUT
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      permission: write
+    status_code: [204]
+  changed_when: false
+  no_log: true
+
+# ---------------------------------------------------------------- rama protegida
+
+- name: Protecciones de rama del repo
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/branch_protections"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+  register: forgejo_protecciones
+  no_log: true
+
+- name: Proteger master (sin pushes directos, PR con el CI en verde)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/branch_protections"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      rule_name: "{{ forgejo_rama_protegida }}"
+      enable_push: false
+      enable_status_check: true
+      status_check_contexts: "{{ forgejo_checks_obligatorios }}"
+      required_approvals: 0
+      block_on_outdated_branch: true
+    status_code: [201]
+  when: forgejo_rama_protegida not in (forgejo_protecciones.json | map(attribute='rule_name') | list)
+  changed_when: true
+  no_log: true
+
+# ---------------------------------------------------------------- avisos
+
+# Webhook de Forgejo -> ci-avisos (loopback) -> relay E2EE -> Element. Ver
+# files/ci_avisos.py.
+- name: Usuario de sistema del receptor de avisos
+  ansible.builtin.user:
+    name: ci-avisos
+    system: true
+    group: git
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Generar el secreto del webhook (solo la primera vez)
+  ansible.builtin.shell:
+    cmd: "umask 027 && openssl rand -hex 32 > /etc/forgejo/webhook_secret"
+    creates: /etc/forgejo/webhook_secret
+
+- name: Permisos del secreto del webhook
+  ansible.builtin.file:
+    path: /etc/forgejo/webhook_secret
+    owner: root
+    group: git
+    mode: "0640"
+
+- name: Receptor de avisos
+  ansible.builtin.copy:
+    src: ci_avisos.py
+    dest: /usr/local/bin/ci_avisos.py
+    mode: "0755"
+  notify: Reiniciar ci-avisos
+
+- name: Variables del receptor (secreto del relay y sala de alertas)
+  ansible.builtin.template:
+    src: ci-avisos.env.j2
+    dest: /etc/forgejo/ci-avisos.env
+    owner: root
+    group: git
+    mode: "0640"
+  notify: Reiniciar ci-avisos
+  no_log: true
+
+- name: Unidad de systemd del receptor
+  ansible.builtin.template:
+    src: ci-avisos.service.j2
+    dest: /etc/systemd/system/ci-avisos.service
+    mode: "0644"
+  notify: Reiniciar ci-avisos
+
+- name: Arrancar el receptor
+  ansible.builtin.systemd:
+    name: ci-avisos
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Leer el secreto del webhook
+  ansible.builtin.slurp:
+    src: /etc/forgejo/webhook_secret
+  register: forgejo_webhook_secret
+  no_log: true
+
+- name: Webhooks del repo
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/hooks"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+  register: forgejo_hooks
+  no_log: true
+
+- name: Webhook de avisos del CI
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_infra }}/hooks"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      type: forgejo
+      active: true
+      events: "{{ forgejo_ci_avisos_events }}"
+      config:
+        url: "http://127.0.0.1:{{ forgejo_ci_avisos_port }}/"
+        content_type: json
+        secret: "{{ forgejo_webhook_secret.content | b64decode | trim }}"
+    status_code: [201]
+  when: forgejo_hooks.json | selectattr('config.url', 'equalto', 'http://127.0.0.1:' ~ forgejo_ci_avisos_port ~ '/') | list | length == 0
+  changed_when: true
+  no_log: true
+
+# ---------------------------------------------------------------- web personal
+
+- name: Repo de la web y su runner de despliegue
+  ansible.builtin.include_tasks: landing.yml
+
+# ---------------------------------------------------------------- copia publica
+
+- name: Repo privado de la copia publica de infra-tf
+  ansible.builtin.include_tasks: publico.yml

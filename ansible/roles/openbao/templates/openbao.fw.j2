@@ -1,0 +1,14 @@
+# Generado por Ansible (role openbao) - no editar a mano.
+# policy_in DROP: guarda las llaves maestras de infra-tf.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+
+[RULES]
+{% for source in openbao_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+{% for source in openbao_origenes_api -%}
+IN ACCEPT -source {{ source }} -p tcp -dport {{ openbao_puerto }}
+{% endfor -%}
+IN ACCEPT -p icmp

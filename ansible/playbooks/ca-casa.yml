@@ -1,0 +1,34 @@
+---
+# Reparte la raiz de la CA de casa (docs/ca-casa.md) por todos los CT y el
+# host de Proxmox. Paperless no: fuera del alcance de los agentes (hosts.yml).
+- name: Host de Proxmox al inventario de esta ejecucion
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox
+      ansible.builtin.add_host:
+        name: pve
+        groups: pve_dynamic
+        ansible_host: 192.0.2.2
+        ansible_user: root
+        # OIDC con auth.home.arpa: reiniciar si cambia una raiz.
+        ca_casa_reiniciar: [pvedaemon, pveproxy]
+      changed_when: false
+
+    # Root dentro del CT 123 via 'pct exec' en el host: agent no tiene sudo y
+    # root no entra por SSH en ese CT (como en forgejo.yml).
+    - name: Anadir el CT 123 como root
+      ansible.builtin.add_host:
+        name: agents-root
+        ansible_host: 192.0.2.2
+        ansible_connection: community.proxmox.proxmox_pct_remote
+        ansible_user: root
+        proxmox_vmid: 123
+        ansible_python_interpreter: /usr/bin/python3
+      changed_when: false
+
+- name: Raiz de la CA de casa
+  hosts: all:!paperless:!localhost:!agents
+  gather_facts: false
+  roles:
+    - ca_casa

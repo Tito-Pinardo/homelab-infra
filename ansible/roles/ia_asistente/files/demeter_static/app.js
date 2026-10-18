@@ -1,111 +1,47 @@
-// Interfaz web de Demeter: revision de correos de compra, gastos y pedidos.
 'use strict';
 const $ = id => document.getElementById(id);
 const state = {status:'review', page:1, query:'', csrf:'', selected:null, detail:null, busy:false, listRequest:0, detailRequest:0};
 const statuses = {review:'Por revisar', validated:'Confirmados', discarded:'Descartados', pending:'Pendientes', error:'Con errores', all:'Todos los mensajes'};
 const reasons = {remitente_no_reconocido:'Comercio por identificar', referencia_ausente:'Falta la referencia', referencia_ausente_o_multiple:'Revisa la referencia de la factura', total_ausente:'Falta el importe total', total_ausente_o_contradictorio:'El importe falta o no coincide entre fuentes', total_ausente_o_ambiguo:'Importe por comprobar', fecha_ausente_o_ambigua:'Fecha por comprobar', varios_pedidos_asignar_importes_manualmente:'Hay varios pedidos: revisa cada importe', adjunto_no_extraido_revisar_original:'Hay un PDF que necesita revisión', importe_o_moneda_ambiguos:'Importe o moneda ambiguos', totales_contradictorios:'Los totales no coinciden', reenviado_o_respuesta_comprobar_duplicado:'Comprueba si este mensaje está duplicado'};
 const labels = {merchant:'Comercio',reference:'Factura o referencia',purchased_on:'Fecha de compra',total_minor:'Importe',currency:'Moneda'};
-const merchantNames={'anthropic.com':'Anthropic','tienda.example':'tienda online','openai.com':'OpenAI','ocio-a.example':'Ocio A','tienda-b.example':'Tienda B','ocio-b.example':'ocio-b'};
+function el(tag, text, cls) {const n=document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
+function formatMoney(amount, currency) {if(amount===null||amount===undefined||!currency)return 'Por revisar';try{return new Intl.NumberFormat('es-ES',{style:'currency',currency}).format(amount/100);}catch{return 'Moneda por revisar';}}
+function formatDate(day) {if(!day)return 'Sin fecha';return new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',year:'numeric'}).format(new Date(day+'T12:00:00'));}
+const merchantNames={'anthropic.com':'Anthropic','amazon.es':'Amazon','openai.com':'OpenAI','loteriasyapuestas.es':'Loterías y Apuestas','aliexpress.com':'AliExpress','poecurrency.com':'poecurrency'};
+function merchantName(item,row) {const m=item?.merchant;return merchantNames[m]||m||row.sender.replace(/.*<([^>]+)>.*/, '$1').split('@').pop()||'Comercio por identificar';}
+function ready(item){return ['merchant','reference','purchased_on','currency'].every(k=>item?.[k])&&Number.isSafeInteger(item?.total_minor);}
+function notify(message,error=false){const n=$('notice');n.textContent=message;n.className='notice'+(error?' error':'');n.hidden=false;}
+async function api(path, options={}) {const r=await fetch(path,{...options,headers:{...(options.body?{'Content-Type':'application/json','X-CSRF-Token':state.csrf}:{}),...options.headers}});let data;try{data=await r.json();}catch{throw Error('No se ha podido leer la respuesta. Comprueba tu sesión de Authelia.');}if(!r.ok)throw Error(data.error||'No se ha podido completar la operación.');return data;}
+async function summary(){const month=$('month').value;const data=await api('/api/summary'+(month?'?month='+encodeURIComponent(month):''));state.csrf=data.csrf;$('month').value=data.month;$('user').textContent=data.user;$('review-count').textContent=data.counts.review||0;$('nav-count').textContent=data.counts.review||0;$('auto-count').textContent=data.counts.automaticas||0;$('validated-count').textContent=data.counts.validated||0;$('spend').textContent=data.totals.length?data.totals.map(x=>formatMoney(x.net_minor,x.currency)).join(' · '):'Sin registros';$('last-capture').textContent=data.last_capture?'Última captura: '+new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(data.last_capture)):'Todavía sin capturas';}
+async function loadList(){const seq=++state.listRequest;const params=new URLSearchParams({status:state.status,page:state.page,q:state.query});const data=await api('/api/candidates?'+params);if(seq!==state.listRequest)return;$('list-title').textContent=statuses[state.status];$('list-count').textContent=data.total+' mensajes';$('page-info').textContent=data.pages?`${data.page} / ${data.pages}`:'0 / 0';$('prev').disabled=state.page<=1;$('next').disabled=state.page>=data.pages;const list=$('list');list.replaceChildren();if(!data.items.length){list.append(el('p','No hay mensajes con estos filtros.','empty'));return;}for(const row of data.items){const item=row.extraction?.items?.[0];const button=el('button',undefined,'candidate'+(row.id===state.selected?' selected':''));button.type='button';button.dataset.id=row.id;button.setAttribute('aria-pressed',String(row.id===state.selected));const top=el('span',undefined,'row-top');top.append(el('strong',merchantName(item,row)),el('span',formatMoney(item?.total_minor,item?.currency),'amount'));const bottom=el('span',undefined,'row-bottom');const complete=ready(item);bottom.append(el('span',formatDate(item?.purchased_on||row.received_on)),el('span',row.status==='validated'?'Confirmado':row.status==='discarded'?'Descartado':complete?'Datos completos':'Necesita revisión','badge'+(row.status==='validated'?' done':complete?' ready':'')));button.append(top,el('span',row.subject,'row-subject'),bottom);button.addEventListener('click',()=>openDetail(row.id).catch(e=>notify(e.message,true)));list.append(button);}}
+function quote(value){return Array.isArray(value)?value[0]||'':value||'';}
+function field(key,value,{evidence=false,index=0}={}){const label=el('label',undefined,'field'+(key==='merchant'||key==='reference'?' wide':''));label.append(el('span',evidence?'Origen de «'+labels[key]+'»':labels[key]));const input=document.createElement(evidence?'textarea':'input');input.name=(evidence?'evidence-':'')+key+'-'+index;input.value=value??'';input.required=true;if(!evidence){input.type=key==='purchased_on'?'date':'text';if(key==='total_minor')input.inputMode='decimal';if(key==='currency'){input.maxLength=3;input.placeholder='EUR';}}input.setAttribute('aria-label',(evidence?'Origen de ':'')+labels[key]+(index?' '+(index+1):''));label.append(input);return label;}
+function sourceBlock(title,text){const d=el('details');d.append(el('summary',title),el('pre',text||'Sin texto extraíble.'));return d;}
+function parseAmount(value){const s=value.trim();if(!/^\d+(?:[.,]\d{1,2})?$/.test(s))throw Error('Escribe el importe sin separadores de miles, por ejemplo 18,00.');const [whole,dec='']=s.split(/[.,]/);const n=BigInt(whole)*100n+BigInt(dec.padEnd(2,'0'));if(n>BigInt(Number.MAX_SAFE_INTEGER))throw Error('Importe demasiado grande.');return Number(n);}
+async function openDetail(id){const seq=++state.detailRequest;const row=await api('/api/candidates/'+id);if(seq!==state.detailRequest)return;state.selected=id;state.detail=row;document.querySelectorAll('.candidate').forEach(n=>{const selected=Number(n.dataset.id)===id;n.classList.toggle('selected',selected);n.setAttribute('aria-pressed',String(selected));});renderDetail(row);if(innerWidth<761)$('detail').scrollIntoView({behavior:'smooth',block:'start'});}
+function renderDetail(row){const panel=$('detail');panel.replaceChildren();const items=row.extraction?.items?.length?row.extraction.items:[{}];const item=items[0];const heading=el('div',undefined,'detail-heading');const title=el('div');title.append(el('p',row.status==='validated'?'COMPRA CONFIRMADA':'REVISIÓN DEL MENSAJE','eyebrow'),el('h2',merchantName(item,row)),el('p',row.subject));heading.append(title,el('span',statuses[row.status]||row.status,'badge'));panel.append(heading);if(items.length===1){panel.append(el('div',formatMoney(item.total_minor,item.currency),'detail-amount'));if(item.description)panel.append(el('p',item.description,'muted'));}
+// Un premio de lotería es dinero que ENTRA: no es un gasto ni un reembolso
+// de ningún pedido, así que no se ofrece confirmarlo como compra.
+const prize=row.extraction?.kind==='premio';const eventKind=['shipment','delivery','cancellation','return_requested','refund'].includes(row.extraction?.kind);const pending=row.status==='review'&&!eventKind&&!prize;if(prize)panel.append(el('div','Premio cobrado. No es un gasto ni un reembolso de un pedido, así que no se suma a tus cuentas: descártalo para quitarlo de la bandeja.','note'));if(row.extraction?.reasons?.length)panel.append(el('div',row.extraction.reasons.map(r=>reasons[r]||'Dato pendiente de comprobar').join(' · '),'note warning'));else if(pending)panel.append(el('div','Comprueba el importe y su documento de origen antes de confirmar.','note'));
+if(row.possible_orders?.length)panel.append(el('div','Ya hay un pedido con esta referencia. Puedes vincularlo para evitar contar el gasto dos veces.','note warning'));
+// Si/no de un clic cuando el correo ya trae los cinco datos con su cita:
+// la pagina es para decidir, no para teclear (peticion del 2026-09-23).
+if(pending&&items.length===1&&ready(item)){const quick=el('div',undefined,'quick');const yes=el('button','Sí, es esta compra: registrar','primary');yes.type='button';yes.addEventListener('click',()=>{const purchase={},evidence={};for(const key of Object.keys(labels)){purchase[key]=item[key];evidence[key]=quote(item.evidence?.[key]);}if(Object.values(evidence).some(v=>!v)){notify('Falta el origen de algún dato: usa el formulario de abajo.',true);return;}perform(row,'approve',{decisions:[{purchase,evidence}],reason:'Confirmada con un clic: datos leídos del correo'}).catch(e=>notify(e.message,true));});const no=el('button','No es una compra','secondary danger');no.type='button';no.addEventListener('click',()=>perform(row,'discard',{reason:'No es una compra'}).catch(e=>notify(e.message,true)));quick.append(yes,no);panel.append(quick);}
+const form=el('form');form.id='review-form';items.forEach((it,index)=>{if(items.length>1)form.append(el('h3','Pedido '+(index+1)));const fields=el('div',undefined,'fields');for(const key of ['merchant','reference','purchased_on','total_minor','currency']){let value=it[key];if(key==='total_minor')value=Number.isSafeInteger(value)?(value/100).toFixed(2).replace('.',','):'';const f=field(key,value,{index});f.querySelector('input').disabled=!pending;fields.append(f);}form.append(fields);const ev=el('details');ev.append(el('summary','Comprobar el origen de los datos'));const grid=el('div',undefined,'evidence-grid');for(const key of Object.keys(labels)){const f=field(key,quote(it.evidence?.[key]),{evidence:true,index});f.querySelector('textarea').disabled=!pending;grid.append(f);}ev.append(el('p','Cada campo conserva un fragmento literal del correo o PDF. Si corriges un dato, actualiza también su fragmento.','muted'),grid);form.append(ev);
+if(row.possible_orders?.length){const label=el('label',undefined,'field wide');label.append(el('span','Vincular con una compra existente'));const select=el('select');select.name='existing-'+index;select.append(new Option('Crear o actualizar por referencia',''));for(const order of row.possible_orders)select.append(new Option(`${order.reference} · ${formatMoney(order.total_minor,order.currency)} · ${formatDate(order.purchased_on)}`,String(order.id)));select.disabled=!pending;label.append(select);form.append(label);}});
+if(pending){const reason=el('label',undefined,'field wide');reason.append(el('span','Nota de revisión'));const input=el('input');input.name='reason';input.value='Importe y documento comprobados';input.required=true;reason.append(input);form.append(reason);const check=el('label',undefined,'review-check');const cb=el('input');cb.type='checkbox';cb.required=true;cb.id='review-checked';check.append(cb,el('span','He comprobado los importes y los documentos. Quiero incorporar esta compra a mis gastos.'));form.append(check);}
+const actions=el('div',undefined,'actions');if(eventKind&&row.status==='review'){const eventButton=el('button','Incorporar estado del pedido','primary');eventButton.type='button';eventButton.addEventListener('click',()=>perform(row,'event',{reason:'Estado del pedido comprobado en su correo'}).catch(e=>notify(e.message,true)));actions.append(eventButton);}if(pending){const approve=el('button','Confirmar compra','primary');approve.type='submit';actions.append(approve);}if(['review','pending','error'].includes(row.status)){const discard=el('button','Descartar','secondary danger');discard.type='button';discard.addEventListener('click',()=>{const reason=prompt('Motivo para descartar este mensaje:','Publicidad o mensaje sin compra');if(reason?.trim())perform(row,'discard',{reason}).catch(e=>notify(e.message,true));});actions.append(discard);}if(['review','error'].includes(row.status)){const reprocess=el('button','Volver a extraer','secondary');reprocess.type='button';reprocess.addEventListener('click',()=>perform(row,'reprocess',{reason:'Revisión con el extractor actual'}).catch(e=>notify(e.message,true)));actions.append(reprocess);}form.append(actions);form.addEventListener('submit',event=>{event.preventDefault();try{const data=new FormData(form);const decisions=items.map((_,index)=>{const purchase={},evidence={};for(const key of Object.keys(labels)){const value=String(data.get(key+'-'+index)||'').trim();purchase[key]=key==='total_minor'?parseAmount(value):key==='currency'?value.toUpperCase():value;evidence[key]=String(data.get('evidence-'+key+'-'+index)||'');}const decision={purchase,evidence};const existing=data.get('existing-'+index);if(existing)decision.existing_order_id=Number(existing);return decision;});perform(row,'approve',{decisions,reason:String(data.get('reason'))}).catch(e=>notify(e.message,true));}catch(error){notify(error.message,true);}});panel.append(form);
+panel.append(sourceBlock('Ver correo original',row.body));for(const doc of row.documents||[])panel.append(sourceBlock('PDF · '+doc.filename,doc.error_code?'No se pudo extraer este PDF: '+doc.error_code:doc.text));const audit=el('details');audit.append(el('summary','Historial de revisión'));const ul=el('ul',undefined,'audit');const actionsText={ingest:'Mensaje recibido',extract:'Datos extraídos',reprocess:'Nueva extracción solicitada',approve_purchases:'Compra incorporada',accept_event:'Estado del pedido incorporado',discard:'Mensaje descartado',error:'Error de extracción',retry:'Reintento solicitado'};for(const entry of row.audit||[])ul.append(el('li',`${new Date(entry.created_at).toLocaleString('es-ES')} · ${actionsText[entry.action]||entry.action} · ${entry.actor}`));audit.append(ul);panel.append(audit);}
+async function perform(row,action,data){if(state.busy)return;state.busy=true;document.querySelectorAll('#detail button').forEach(b=>b.disabled=true);try{await api(`/api/candidates/${row.id}/${action}`,{method:'POST',body:JSON.stringify({revision:row.revision,...data})});notify(action==='approve'?'Compra confirmada. El resumen ya está actualizado.':action==='discard'?'Mensaje descartado. No se ha sumado ningún gasto.':action==='event'?'Estado del pedido incorporado, sin sumar otro gasto.':'Extracción actualizada. Revisa los datos.');await summary();await loadList();await loadDashboard();await openDetail(row.id);}finally{state.busy=false;document.querySelectorAll('#detail button').forEach(b=>b.disabled=false);}}
+document.querySelectorAll('.nav[data-status]').forEach(button=>button.addEventListener('click',()=>{showView('review');state.status=button.dataset.status;state.page=1;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b===button));loadList().catch(e=>notify(e.message,true));}));let timer;$('search').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{state.query=$('search').value;state.page=1;loadList().catch(e=>notify(e.message,true));},250);});$('prev').addEventListener('click',()=>{state.page--;loadList().catch(e=>notify(e.message,true));});$('next').addEventListener('click',()=>{state.page++;loadList().catch(e=>notify(e.message,true));});$('month').addEventListener('change',()=>Promise.all([summary(),loadDashboard(),loadOrders()]).catch(e=>notify(e.message,true)));$('today').textContent=new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'long',year:'numeric'}).format(new Date());Promise.all([summary(),loadList()]).catch(error=>notify(error.message,true));
+// Vaciado por remitente. El 2026-09-23 habia 431 mensajes por revisar y 286
+// eran avisos de episodios del mismo creador: de uno en uno son 286 clics
+// identicos y la bandeja nunca se vacia.
+async function loadSenders(){const box=$('sender-list');const data=await api('/api/remitentes');box.replaceChildren();const items=data.items.filter(x=>x.total>1);if(!items.length){box.append(el('p','No hay ningún remitente con varios mensajes pendientes.','empty'));return;}for(const row of items){const line=el('div',undefined,'sender');const who=row.sender.replace(/.*<([^>]+)>.*/,'$1').trim();line.append(el('span',who,'sender-name'),el('span',row.total+' mensajes','badge'));const button=el('button','Descartar los '+row.total,'secondary danger');button.type='button';button.addEventListener('click',()=>discardSender(who,row.total).catch(e=>notify(e.message,true)));line.append(button);box.append(line);}}
+async function discardSender(sender,total){if(state.busy)return;const reason=prompt(`Se descartarán ${total} mensajes de ${sender}, incluidos los que lleguen marcados con error. Quedarán en «Descartados» y no sumarán gastos.\n\nMotivo:`,'Avisos sin compra');if(!reason?.trim())return;state.busy=true;document.querySelectorAll('#sender-list button').forEach(b=>b.disabled=true);try{const data=await api('/api/candidates/descartar-remitente',{method:'POST',body:JSON.stringify({sender,reason,limit:1000})});notify(`${data.descartados} mensajes descartados${data.omitidos?`; ${data.omitidos} sin tocar porque cambiaron mientras tanto`:''}. No se ha sumado ningún gasto.`);await Promise.all([summary(),loadList(),loadSenders()]);}finally{state.busy=false;}}
+$('senders').addEventListener('toggle',()=>{if($('senders').open)loadSenders().catch(e=>notify(e.message,true));});
 
-/** Crea un elemento HTML con texto y clase. */
-function el(tag, text, cls) {
-  // ...
-}
-
-/** Formatea un importe en centimos como moneda. */
-function formatMoney(amount, currency) {
-  // ...
-}
-
-/** Formatea una fecha para mostrarla. */
-function formatDate(day) {
-  // ...
-}
-
-/** Devuelve el nombre legible del comercio. */
-function merchantName(item, row) {
-  // ...
-}
-
-/** Indica si un articulo tiene todos los datos para confirmarlo. */
-function ready(item) {
-  // ...
-}
-
-/** Muestra un aviso en pantalla. */
-function notify(message, error = false) {
-  // ...
-}
-
-/** Llama a la API de Demeter con la sesion y el token CSRF. */
-async function api(path, options = {}) {
-  // ...
-}
-
-/** Carga el resumen del mes. */
-async function summary() {
-  // ...
-}
-
-/** Carga la lista de mensajes del estado seleccionado. */
-async function loadList() {
-  // ...
-}
-
-/** Devuelve la cita de evidencia de un campo. */
-function quote(value) {
-  // ...
-}
-
-/** Crea un campo editable del formulario de revision. */
-function field(key, value, {evidence = false, index = 0} = {}) {
-  // ...
-}
-
-/** Crea un bloque plegable con el texto original. */
-function sourceBlock(title, text) {
-  // ...
-}
-
-/** Convierte un importe escrito a centimos. */
-function parseAmount(value) {
-  // ...
-}
-
-/** Abre el detalle de un mensaje. */
-async function openDetail(id) {
-  // ...
-}
-
-/** Pinta el detalle de un mensaje con sus acciones de revision. */
-function renderDetail(row) {
-  // ...
-}
-
-/** Ejecuta una accion de revision sobre un mensaje. */
-async function perform(row, action, data) {
-  // ...
-}
-
-/** Carga los remitentes con mas mensajes por revisar. */
-async function loadSenders() {
-  // ...
-}
-
-/** Descarta en bloque los mensajes de un remitente. */
-async function discardSender(sender, total) {
-  // ...
-}
-
-/** Carga las compras aprobadas automaticamente pendientes de confirmar. */
-async function loadAuto() {
-  // ...
-}
-
-/** Confirma o deshace una compra aprobada automaticamente. */
-async function decideAuto(row, action, quiet = false) {
-  // ...
-}
-
-// Arranque: enlaza la navegacion, los filtros y las acciones en bloque, y
-// carga el resumen y la lista inicial.
+// Aprobadas solas: lo que decidio la automatica espera un si o un no.
+async function loadAuto(){const data=await api('/api/automaticas');const list=$('auto-list');list.replaceChildren();$('auto-total').textContent=data.items.length?`${data.items.length} por confirmar`:'';$('auto-all').hidden=data.items.length<2;if(!data.items.length){list.append(el('p','Nada pendiente: todo lo que aprobó la automática ya tiene tu visto bueno.','empty'));return;}for(const row of data.items){const card=el('div',undefined,'auto-row');const info=el('div',undefined,'auto-info');info.append(el('strong',`${merchantNames[row.merchant]||row.merchant} · ${formatMoney(row.total_minor,row.currency)}`),el('span',[formatDate(row.purchased_on),row.category,row.description].filter(Boolean).join(' · '),'muted'));const acts=el('div',undefined,'auto-actions');const yes=el('button','✓ Correcta','primary');yes.type='button';yes.addEventListener('click',()=>decideAuto(row,'confirm-auto').catch(e=>notify(e.message,true)));const no=el('button','✗ No es una compra','secondary danger');no.type='button';no.addEventListener('click',()=>decideAuto(row,'undo-auto').catch(e=>notify(e.message,true)));acts.append(yes,no);card.append(info,acts);list.append(card);}}
+async function decideAuto(row,action,quiet=false){await api(`/api/candidates/${row.id}/${action}`,{method:'POST',body:JSON.stringify({revision:row.revision,reason:action==='confirm-auto'?'Confirmada en la página':'No es una compra (página)'})});if(!quiet){notify(action==='confirm-auto'?'Confirmada. Sigue contando en tus gastos.':'Quitada de tus gastos. El correo queda en «Descartados».');await Promise.all([summary(),loadAuto()]);}}
+$('auto-all').addEventListener('click',async()=>{if(state.busy)return;const data=await api('/api/automaticas');if(!data.items.length)return;if(!confirm(`¿Confirmar las ${data.items.length} compras como correctas?`))return;state.busy=true;const boton=$('auto-all');boton.disabled=true;boton.textContent='Confirmando…';try{const r=await api('/api/automaticas/confirmar',{method:'POST',body:JSON.stringify({items:data.items.map(x=>({id:x.id,revision:x.revision}))})});notify(`${r.confirmadas} confirmadas.`+(r.omitidas?` ${r.omitidas} no, porque cambiaron mientras tanto: siguen en la lista.`:''));await Promise.all([summary(),loadAuto()]);}finally{state.busy=false;boton.disabled=false;boton.textContent='Confirmar todas';}});

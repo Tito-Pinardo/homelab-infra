@@ -1,0 +1,7 @@
+# Gestionado por Ansible (rol crowdsec). Log de acceso de Traefik (JSON). La IP
+# es la real tambien con Cloudflare: Traefik se fia de su X-Forwarded-For
+# (traefik_ips_confiables) y el parser coge la ultima de la cadena.
+filenames:
+  - /var/log/traefik/traefik-access.log
+labels:
+  type: traefik

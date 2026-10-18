@@ -1,0 +1,8 @@
+[Unit]
+Description=Resumen diario de CrowdSec a Element (docs/crowdsec.md)
+After=crowdsec.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/crowdsec-avisos/matrix.env
+ExecStart=/usr/local/sbin/crowdsec-resumen

@@ -1,0 +1,15 @@
+{% for id, c in sso_clientes.items() %}
+      - client_id: '{{ id }}'
+        client_name: '{{ c.nombre }}'
+        client_secret: '{{ lookup('vars', 'vault_oidc_' ~ id ~ '_hash') }}'
+        public: false
+        authorization_policy: 'two_factor'
+        consent_mode: 'implicit'
+        redirect_uris:
+{% for r in c.redirecciones %}
+          - '{{ r }}'
+{% endfor %}
+        scopes: {{ c.scopes | to_json }}
+        userinfo_signed_response_alg: 'none'
+        token_endpoint_auth_method: 'client_secret_basic'
+{% endfor %}

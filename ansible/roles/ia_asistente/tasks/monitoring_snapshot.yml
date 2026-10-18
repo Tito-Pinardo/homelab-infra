@@ -1,6 +1,15 @@
-# Receptor de la instantanea de monitorizacion que empuja el host Proxmox
-# (scripts/sync_monitoring_snapshot.py). Usuario dedicado con SSH forzado a un
-# solo comando: escribir ese fichero.
+# Receptor del snapshot de Zabbix/Wazuh empujado desde el host Proxmox (ver
+# scripts/sync_monitoring_snapshot.py). Usuario dedicado con SSH forzado a
+# UN SOLO comando (escribir ese fichero) - no puede hacer nada mas por esa
+# clave, ni siquiera abrir una shell.
+#
+# Home en su PROPIO directorio de nivel superior (/var/lib/monitoring-push),
+# NO anidado dentro de /var/lib/ia-asistente (propiedad de obsidian-sync) -
+# sshd exige que toda la cadena de directorios hasta ~/.ssh/authorized_keys
+# sea del propio usuario o de root; si un directorio intermedio es de otro
+# usuario sin privilegios, rechaza la clave en silencio ("key is not
+# allowed", sin mas detalle ni con LogLevel DEBUG3 - bug real depurado el
+# 2026-09-16).
 
 - name: Crear usuario de sistema para recibir el snapshot de monitorizacion
   ansible.builtin.user:
@@ -8,9 +17,12 @@
     system: true
     create_home: true
     home: /var/lib/monitoring-push
-    # /usr/sbin/nologin no vale: sshd ejecuta el comando forzado con
-    # '$SHELL -c', y nologin lo rechaza. La restriccion real la da command= en
-    # authorized_keys.
+    # /usr/sbin/nologin NO vale aqui: sshd ejecuta el comando forzado como
+    # '$SHELL -c "$COMANDO"', y nologin ignora -c y siempre rechaza (bug
+    # real depurado el 2026-09-16: "This account is currently not
+    # available" pese a autenticar bien). La restriccion real ya la da la
+    # opcion command= en authorized_keys, no la shell - /bin/sh es seguro
+    # aqui porque esta clave nunca podra pedir una sesion interactiva.
     shell: /bin/sh
 
 - name: Crear directorio .ssh de monitoring-push
@@ -32,8 +44,21 @@
     owner: monitoring-push
     group: monitoring-push
     mode: "0600"
-    # Escritura atomica: solo se sobrescribe la instantanea si llega contenido
-    # no vacio, para que una conexion sin datos no la vacie.
+    # Escritura atomica, NO "cat > fichero" a secas: ese comando trunca el
+    # fichero al abrirlo aunque no llegue ningun byte por stdin - CUALQUIER
+    # conexion SSH a esta cuenta (incluso una prueba de conectividad sin
+    # enviar datos) vaciaba el snapshot real. Bug real (2026-09-16): asi es
+    # como se vacio mientras se depuraba el fallo de "pct: command not
+    # found" del cron. Ahora solo se sobreescribe si llega contenido no vacio.
+    #
+    # chmod 644 tras el mv: mktemp crea el temporal en 600 y mv conserva ese
+    # modo - el directorio ya se dejo en 0755 para que ia-bot pudiera
+    # atravesarlo, pero el FICHERO seguia siendo ilegible para ia-bot. Bug
+    # real (2026-09-17): get_server_health fallaba con PermissionError y el
+    # modelo lo parafraseaba como "no tengo permisos para acceder a ciertos
+    # archivos", alucinando ademas "no hay problemas activos" en vez de
+    # admitir que no pudo comprobarlo - mientras Zabbix SI tenia problemas
+    # reales activos (disco >90% en lb1/lb9) que el bot no podia ver.
     content: >
       command="f=$(/usr/bin/mktemp) && /usr/bin/cat > $f && [ -s $f ] && /usr/bin/chmod 644 $f && /usr/bin/mv $f {{ ia_monitoring_snapshot_path }} || /usr/bin/rm -f $f",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding
       {{ ia_monitoring_push_pubkey }}

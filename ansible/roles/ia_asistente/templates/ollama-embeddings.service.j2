@@ -8,12 +8,14 @@ User=ollama
 Group=ollama
 Environment=OLLAMA_HOST=127.0.0.1:11434
 Environment=OLLAMA_MODELS=/var/lib/ollama-embeddings/models
-# nomic-embed-text admite hasta 8192 tokens de contexto; el valor por
-# defecto de Ollama rechaza notas largas.
+# nomic-embed-text soporta hasta 8192 tokens de contexto - el default de
+# Ollama (2048) rechazaba notas largas sin varios encabezados con "input
+# too large to process" (bug real, 2026-09-16).
 Environment=OLLAMA_CONTEXT_LENGTH=8192
 Environment=LD_LIBRARY_PATH=/opt/ollama/lib/ollama
-# Sin HOME explicito, el binario intenta escribir su clave en /home/ollama,
-# que no existe, y falla.
+# create_home:false en el usuario "ollama" - sin HOME explicito, el binario
+# intenta escribir su clave de firma (~/.ollama/id_ed25519) en /home/ollama,
+# que no existe, y muere con "permission denied".
 Environment=HOME=/var/lib/ollama-embeddings
 ExecStart=/opt/ollama/bin/ollama serve
 Restart=on-failure

@@ -18,16 +18,25 @@
     - /var/lib/qdrant/storage
     - /var/lib/qdrant/snapshots
 
+# Un directorio por version: con /tmp y 'creates: /tmp/qdrant', si quedaba el
+# binario de la version anterior no se descargaba la nueva y se reinstalaba
+# la vieja (visto el 15-10 con el PR de Renovate).
+- name: Directorio de la version {{ qdrant_version }}
+  ansible.builtin.file:
+    path: "/opt/qdrant-{{ qdrant_version }}"
+    state: directory
+    mode: "0755"
+
 - name: Descargar y extraer el binario de Qdrant {{ qdrant_version }}
   ansible.builtin.unarchive:
     src: "https://github.com/qdrant/qdrant/releases/download/v{{ qdrant_version }}/qdrant-x86_64-unknown-linux-gnu.tar.gz"
-    dest: /tmp
+    dest: "/opt/qdrant-{{ qdrant_version }}"
     remote_src: true
-    creates: /tmp/qdrant
+    creates: "/opt/qdrant-{{ qdrant_version }}/qdrant"
 
 - name: Instalar el binario en /usr/bin
   ansible.builtin.copy:
-    src: /tmp/qdrant
+    src: "/opt/qdrant-{{ qdrant_version }}/qdrant"
     dest: /usr/bin/qdrant
     mode: "0755"
     remote_src: true

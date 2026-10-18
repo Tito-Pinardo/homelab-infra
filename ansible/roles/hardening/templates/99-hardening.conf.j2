@@ -1,6 +1,9 @@
-# Gestionado por Ansible (roles/hardening): no editar a mano.
-# Subconjunto seguro del benchmark CIS para Debian que no rompe el acceso por
-# clave que usa la automatizacion.
+# Gestionado por Ansible (roles/hardening) - no editar a mano.
+# Subconjunto seguro del benchmark CIS Debian 12/13 aplicado tras el escaneo
+# SCA de Wazuh en el CT de Plex (2026-09-16, 42% de puntuacion, 100/207
+# comprobaciones fallidas). Se deja fuera a proposito "PermitRootLogin no":
+# rompería el acceso root por clave que usa TODO este repo (Ansible,
+# register_monitoring.py...) en los 14 CT - decision explicita, no un olvido.
 MaxAuthTries 4
 ClientAliveInterval 15
 ClientAliveCountMax 3
@@ -8,13 +11,16 @@ LoginGraceTime 60
 DisableForwarding yes
 MaxStartups 10:30:60
 Banner /etc/issue.net
-# Solo MAC SHA-2, como exige la politica SCA propia.
+# Solo SHA-2 (sin umac-128): es lo que exige la politica SCA casa-esenciales
+# y lo que ya tenia a mano el host Proxmox (2026-09-24).
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
 {% if hardening_forwarding_sources | default([]) | length > 0 %}
 
-# Excepcion a DisableForwarding para VS Code Remote-SSH: solo el usuario
-# agent, solo desde hardening_forwarding_sources, solo reenvio local (-L) y
-# solo hacia localhost. Todo lo demas sigue con DisableForwarding yes.
+# Excepcion a DisableForwarding para VS Code Remote-SSH: arranca su servidor
+# en localhost del CT y llega a el con reenvio local por el tunel SSH. Solo
+# el usuario agent, solo desde las IPs de hardening_forwarding_sources, solo
+# reenvio local (-L) y solo hacia localhost. Sin -R, sin agente, sin X11,
+# sin sockets. Todo lo demas sigue con DisableForwarding yes.
 Match User agent Address {{ hardening_forwarding_sources | join(",") }}
     DisableForwarding no
     AllowTcpForwarding local
@@ -23,7 +29,7 @@ Match User agent Address {{ hardening_forwarding_sources | join(",") }}
     AllowStreamLocalForwarding no
     AllowAgentForwarding no
     X11Forwarding no
-# Cierra el Match: este drop-in se incluye al principio de sshd_config y sin
-# esto el resto de la configuracion quedaria dentro del bloque.
+# Cierra el Match: este drop-in se incluye al PRINCIPIO de sshd_config y sin
+# esto el resto de la config principal quedaria dentro del bloque.
 Match all
 {% endif %}

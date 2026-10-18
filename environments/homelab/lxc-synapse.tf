@@ -1,11 +1,14 @@
-# CT del homeserver Matrix (Synapse + PostgreSQL, sin Docker). Separado de
-# Element porque Synapse tiene estado y consume mas.
+# lxc-synapse.tf: CT dedicado al homeserver Matrix (Synapse + PostgreSQL
+# locales, sin Docker - mismo criterio que Traefik/Element). Separado del CT
+# de Element aposta: Synapse tiene estado (base de datos, media) y consume
+# bastante mas que un sitio estatico - mezclarlos ensuciaria backups/recursos
+# de un CT que hoy es minimo. Ver conversacion en el runbook de Obsidian.
 
 resource "proxmox_virtual_environment_container" "synapse" {
   node_name    = "main"
   vm_id        = 111
   unprivileged = true
-  description  = "Homeserver Matrix privado (Synapse + PostgreSQL). Gestionado por Terraform + Ansible."
+  description  = "Homeserver Matrix (Synapse + PostgreSQL) - privado, sin federacion. Backend de Element (CT 110). Gestionado por Terraform + Ansible, ver ~/infra-tf."
 
   initialization {
     hostname = "synapse"
@@ -16,7 +19,7 @@ resource "proxmox_virtual_environment_container" "synapse" {
 
     ip_config {
       ipv4 {
-        address = "192.0.2.32/24"
+        address = "192.0.2.254/24"
         gateway = "192.0.2.1"
       }
     }
@@ -44,15 +47,22 @@ resource "proxmox_virtual_environment_container" "synapse" {
     firewall = true
   }
 
-  # Las claves SSH de este CT las gestiono fuera de Terraform: user_account.keys
-  # es ForceNew y cualquier diferencia recrearia el CT entero.
+  # user_account.keys es ForceNew - este CT se creo antes de anadir la
+  # segunda clave SSH (Mac) a locals.tf. Ambas claves ya estan en
+  # authorized_keys a mano (mismo patron que el resto de CT viejos, ver
+  # providers.tf/locals.tf) - sin esto, cualquier 'terraform apply' intenta
+  # "corregir" el desajuste destruyendo y recreando el CT entero.
+  # Descubierto 2026-09-19 revisando un 'terraform plan' que iba a borrar
+  # 4 CT en produccion.
   lifecycle {
-    ignore_changes = [initialization[0].user_account]
+    # RAM en caliente (docs/despliegue.md): el proveedor reinicia el CT al
+    # cambiarla; se cambia con pct set / la web y aqui queda como registro.
+    ignore_changes = [memory, initialization[0].user_account]
   }
 
   started = true
 }
 
 output "synapse_ip" {
-  value = "192.0.2.32"
+  value = "192.0.2.254"
 }

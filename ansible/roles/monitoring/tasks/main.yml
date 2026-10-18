@@ -1,24 +1,32 @@
 ---
-# Requiere haber ejecutado scripts/register_monitoring.py para este host,
-# que genera vault_zabbix_psk y vault_wazuh_client_keys_line en el vault del
-# grupo.
+# Requiere que scripts/register_monitoring.py ya se haya ejecutado para este
+# host (genera vault_zabbix_psk y, si aplica, vault_wazuh_client_keys_line
+# en el vault del grupo) - ver ese script para el porque: las APIs de
+# Zabbix/Wazuh no son alcanzables desde Ansible, solo via pct exec por el
+# host Proxmox.
 #
-# Wazuh no tiene paquete para Alpine: en esos hosts solo se instala Zabbix.
+# Wazuh no tiene paquete nativo para Alpine/musl (comprobado 2026-09-16,
+# "apk search wazuh-agent" no devuelve nada) - en esos hosts solo se
+# gestiona Zabbix. Debian sigue llevando ambos.
 
 - name: Instalar zabbix-agent2 (Debian trixie - mismo .deb pinneado que el resto del fleet)
-  # El .deb fijado esta compilado para Debian 13; los hosts con Debian 12
-  # van por una rama aparte.
+  # El .deb pinneado esta compilado para Debian 13/trixie (Depends: libc6
+  # >= 2.38) - falla en cualquier host Debian 12/bookworm (real 2026-09-16
+  # con Plex, la unica CT bookworm del repo - obligada por el repo CUDA de
+  # NVIDIA, que solo publica para debian12). Rama aparte para bookworm.
   when: ansible_pkg_mgr == 'apt' and ansible_distribution_release == 'trixie'
   block:
+    # En /var/cache y no en /tmp: /tmp se vacia y cada ejecucion volvia a
+    # copiar/descargar (salia como "cambiado" en cada despliegue).
     - name: Copiar el .deb de zabbix-agent2
       ansible.builtin.copy:
         src: zabbix-agent2.deb
-        dest: /tmp/zabbix-agent2.deb
+        dest: /var/cache/zabbix-agent2.deb
         mode: "0644"
 
     - name: Instalar zabbix-agent2 (apt resuelve dependencias del .deb local)
       ansible.builtin.apt:
-        deb: /tmp/zabbix-agent2.deb
+        deb: /var/cache/zabbix-agent2.deb
 
 - name: Instalar zabbix-agent2 (Debian bookworm - via repo oficial de Zabbix, build correcto para libc6 2.36)
   when: ansible_pkg_mgr == 'apt' and ansible_distribution_release == 'bookworm'
@@ -26,12 +34,12 @@
     - name: Descargar zabbix-release (anade el repo apt + la clave GPG)
       ansible.builtin.get_url:
         url: "https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian12_all.deb"
-        dest: /tmp/zabbix-release.deb
+        dest: /var/cache/zabbix-release.deb
         mode: "0644"
 
     - name: Instalar zabbix-release
       ansible.builtin.apt:
-        deb: /tmp/zabbix-release.deb
+        deb: /var/cache/zabbix-release.deb
 
     - name: Instalar zabbix-agent2 desde el repo oficial
       ansible.builtin.apt:
@@ -74,12 +82,12 @@
     - name: Descargar el .deb de wazuh-agent (misma version 4.14.7-1 que el fleet)
       ansible.builtin.get_url:
         url: https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.14.7-1_amd64.deb
-        dest: /tmp/wazuh-agent.deb
+        dest: /var/cache/wazuh-agent.deb
         mode: "0644"
 
     - name: Instalar wazuh-agent
       ansible.builtin.apt:
-        deb: /tmp/wazuh-agent.deb
+        deb: /var/cache/wazuh-agent.deb
 
     - name: Escribir client.keys de Wazuh (identidad ya registrada en el manager)
       ansible.builtin.copy:
@@ -99,8 +107,10 @@
         mode: "0640"
       notify: reiniciar wazuh-agent
 
-    # ossec.conf carga la politica SCA propia; aqui la despliego en cada CT. Es
-    # una politica local, asi que sca.remote_commands=0 no la bloquea.
+    # ossec.conf carga la politica SCA casa-esenciales.yml, pero hasta
+    # 2026-09-24 solo existia (copiada a mano) en proxmox, zabbix y wazuh:
+    # en los CT el SCA avisaba "File not found" y esos controles no corrian.
+    # Es una politica local, asi que sca.remote_commands=0 no la bloquea.
     - name: Script de comprobaciones de la politica SCA casa-esenciales (solo lectura)
       ansible.builtin.copy:
         src: casa-seguridad-check.py

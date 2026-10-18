@@ -12,9 +12,14 @@
     state: present
     update_cache: true
 
-# El modelo de embeddings se sirve desde mi PC con GPU: en la CPU del host es
-# demasiado lento. Los conectores apuntan a ia_embeddings_ollama_url.
-# ollama_embeddings.yml se conserva como alternativa por CPU.
+# Ollama de embeddings YA NO vive aqui (2026-09-17): el host Proxmox tiene
+# una CPU de 2013 (Xeon E5-2695 v2) sin AVX2, y llama.cpp sin AVX2 es ~500x
+# mas lento (medido: 13-15s por embedding corto vs ~30ms en la GPU del PC
+# lucifer, que ya corre el Ollama del modelo de chat). Los conectores
+# (Obsidian/correo/conversaciones) apuntan ahora a ia_embeddings_ollama_url
+# = la IP del PC - ver vars.yml. ollama_embeddings.yml se deja en el repo
+# sin incluir aqui, por si algun dia el servidor tiene GPU propia y compensa
+# volver a traerlo local (es el plan a futuro).
 
 - name: Conector Obsidian (rsync + embeddings -> Qdrant)
   ansible.builtin.include_tasks: obsidian_connector.yml

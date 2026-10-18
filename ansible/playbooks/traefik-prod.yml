@@ -3,4 +3,6 @@
   hosts: traefik_prod
   become: true
   roles:
+    # CrowdSec primero: genera la clave que lee el plugin de Traefik.
+    - crowdsec
     - traefik

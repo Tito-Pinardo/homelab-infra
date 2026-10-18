@@ -1,14 +1,19 @@
-# Stack de Caddy + Authelia + arr.
+# Stack grande (Caddy+Authelia+arr, 12 servicios) - sustituye al stack
+# manual en el CT106 original. Ver runbook para el detalle completo.
 #
-# PUID/PGID iguales en todos los contenedores de gestion de medios: no
-# cambiar sin comprobar antes los permisos en los discos.
+# PUID/PGID 568/44 en todos los contenedores de gestion de media (igual
+# que el original) - NO cambiar sin comprobar antes los permisos reales en
+# los discos lb*/raiz5.
 arr_puid: "568"
 arr_pgid: "44"
 arr_tz: "Europe/Madrid"
 
-# Discos comunes a varios servicios. Los mounts que varian por servicio se
-# quedan explicitos en la plantilla para no dar acceso a rutas que un
-# servicio no necesita.
+# Discos lb* identicos para radarr/sonarr/bazarr/unpackerr/qbittorrent/qui
+# (elimina la duplicacion de 8 lineas x 6 servicios que tenia el compose
+# original a mano). Los mounts de raiz5 SI varian por servicio a proposito
+# (ej. bazarr no necesita /raiz5/downloads) - se quedan explicitos en el
+# template, no se generalizan para no dar acceso a rutas que un servicio
+# no necesita.
 arr_lb_disks: [1, 2, 3, 4, 5, 7, 8, 9]
 
 arr_sonarr_api_key: "{{ vault_arr_sonarr_api_key }}"
@@ -16,20 +21,7 @@ arr_radarr_api_key: "{{ vault_arr_radarr_api_key }}"
 arr_prowlarr_api_key: "{{ vault_arr_prowlarr_api_key }}"
 arr_wireguard_private_key: "{{ vault_arr_wireguard_private_key }}"
 arr_gluetun_control_password: "{{ vault_arr_gluetun_control_password }}"
-arr_qbittorrent_user: "{{ vault_arr_qbittorrent_user }}"
 arr_qbittorrent_password: "{{ vault_arr_qbittorrent_password }}"
-arr_gluetun_control_user: "{{ vault_arr_gluetun_control_user }}"
 
-# Redes con acceso a los servicios internos y origenes del trafico publico
-# del proxy. Se definen en el inventario privado.
-caddy_redes_permitidas: ""
-caddy_entrada_publica: ""
-
-# Firewall interno de la VPN (subredes de salida y puertos de entrada) y
-# pais de los servidores. Se definen en el inventario privado.
-arr_gluetun_outbound_subnets: ""
-arr_gluetun_input_ports: ""
-arr_vpn_server_countries: ""
-
-# Nombre del router del dashboard de Traefik (ver traefik.home.example en el Caddyfile).
+# Nombre del router del dashboard de Traefik (ver traefik.home.arpa en el Caddyfile).
 traefik_dashboard_host_prod: "traefik.example.org"

@@ -1,0 +1,37 @@
+---
+# Token de pve@pbs para el host. PBS solo lo enseña al crearlo: el playbook
+# lo crea (o lo rehace) solo cuando el host aun no tiene el almacen
+# configurado, y se lo pasa directo, sin guardarlo en ningun otro sitio.
+#   - include_role: { name: pbs, tasks_from: token }
+
+- name: Borrar el token anterior (si lo hay)
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, user, delete-token, pve@pbs, pve]
+  register: pbs_token_borrado
+  changed_when: pbs_token_borrado.rc == 0
+  failed_when: false
+
+- name: Crear el token
+  ansible.builtin.command:
+    # Sin --output-format (no lo admite): imprime "Result: {json}".
+    argv: [proxmox-backup-manager, user, generate-token, pve@pbs, pve]
+  register: pbs_token
+  changed_when: true
+  no_log: true
+
+# DatastoreBackup: hacer copias y restaurar las suyas; no puede borrar ni podar
+# (eso lo hace el propio PBS): un host comprometido no puede borrar las copias.
+# El permiso efectivo de un token es la interseccion del suyo y el de su
+# usuario: los dos lo necesitan (sin el del usuario, Proxmox dice "Cannot find
+# datastore").
+- name: Permisos del usuario y del token sobre el almacen
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, acl, update, "/datastore/{{ pbs_datastore }}", DatastoreBackup,
+           --auth-id, "{{ item }}"]
+  loop: [pve@pbs, pve@pbs!pve]
+  changed_when: true
+
+- name: Guardar el secreto para el play del host
+  ansible.builtin.set_fact:
+    pbs_token_secreto: "{{ (pbs_token.stdout | regex_replace('^Result:\\s*', '') | from_json).value }}"
+  no_log: true

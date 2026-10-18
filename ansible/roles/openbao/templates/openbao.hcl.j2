@@ -1,0 +1,30 @@
+# Generado por Ansible (role openbao) - no editar a mano. Ver docs/openbao.md.
+ui           = true
+cluster_name = "casa"
+
+# LXC sin privilegios: no puede bloquear memoria. Con raft se recomienda
+# desactivarlo igualmente.
+disable_mlock = true
+
+storage "raft" {
+  path    = "/opt/openbao/data"
+  node_id = "openbao"
+}
+
+listener "tcp" {
+  address       = "0.0.0.0:{{ openbao_puerto }}"
+  tls_cert_file = "/opt/openbao/tls/tls.crt"
+  tls_key_file  = "/opt/openbao/tls/tls.key"
+}
+
+api_addr     = "{{ openbao_addr }}"
+cluster_addr = "https://{{ ansible_host }}:8201"
+
+# Auditoria: cada peticion (quien leyo que y cuando) a fichero. En OpenBao 2.x
+# solo se puede declarar aqui, no por la API.
+audit "file" "auditoria" {
+  description = "Cada lectura de secretos queda registrada"
+  options {
+    file_path = "/var/log/openbao/audit.log"
+  }
+}

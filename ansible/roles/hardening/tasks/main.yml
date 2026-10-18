@@ -1,7 +1,17 @@
 ---
-# Hardening reutilizable para Debian (bookworm/trixie), a partir de las
-# comprobaciones SCA de Wazuh. Solo aplica cambios seguros que no rompen el
-# acceso existente; lo que no aplica a un LXC se deja fuera.
+# Role de hardening reutilizable (Debian bookworm/trixie), aplicado por
+# primera vez 2026-09-16 tras revisar el escaneo SCA de Wazuh en el CT de
+# Plex (benchmark CIS Debian 12, 42% de puntuacion, 100/207 comprobaciones
+# fallidas). Subconjunto SEGURO y RAPIDO de aplicar sin romper nada del
+# acceso existente - ver el runbook para el resto de hallazgos (particiones
+# separadas - no aplica a LXC; ufw/nftables - redundante con el firewall de
+# Proxmox por CT; auditd/AIDE/politicas PAM completas - proyecto aparte,
+# no incluido aqui todavia).
+#
+# A PROPOSITO fuera de este role: "PermitRootLogin no" - rompería el acceso
+# root por clave que usa TODO este repo (Ansible, register_monitoring.py)
+# en los 14 CT. Decision explicita, no un olvido - no tocar sin que el
+# usuario lo pida claramente sabiendo la consecuencia.
 
 - name: Desplegar el banner de aviso legal (SSH y consola local)
   ansible.builtin.template:
@@ -20,7 +30,8 @@
     validate: "sshd -t -f %s"
   notify: recargar sshd
 
-# Puntos que marcaba la politica SCA propia en los CT.
+# 2026-09-24: la politica SCA casa-esenciales (roles/monitoring) marcaba
+# en todos los CT estos dos puntos que el host Proxmox ya tenia corregidos.
 - name: sshd_config solo legible por root
   ansible.builtin.file:
     path: /etc/ssh/sshd_config
@@ -28,19 +39,29 @@
     group: root
     mode: "0600"
 
-# nullok deja entrar a una cuenta con contrasena vacia; quitarlo no cambia
-# el acceso. pam-auth-update respeta el fichero modificado.
+# nullok deja entrar a una cuenta con contrasena vacia. Ninguna la tiene
+# (lo comprueba la misma politica), asi que quitarlo no cambia el acceso.
+# pam-auth-update respeta el fichero modificado y avisa en vez de pisarlo.
 - name: PAM no acepta contrasenas vacias (quitar nullok)
   ansible.builtin.replace:
     path: /etc/pam.d/common-auth
     regexp: '^(auth\s.*pam_unix\.so.*?)\s+nullok\b'
     replace: '\1'
 
-# No instalo chrony ni timesyncd: un LXC sin privilegios no puede ajustar el
-# reloj y comparte el del host, que es quien se sincroniza.
+# NO se instala chrony/systemd-timesyncd (CIS 2.1) a proposito: un LXC sin
+# privilegios no tiene CAP_SYS_TIME, chronyd falla con "adjtimex failed:
+# Operation not permitted" (real 2026-09-16) - el contenedor comparte el
+# reloj del kernel con el host, no hay nada que ajustar dentro. La
+# sincronizacion es responsabilidad del host Proxmox (ya confirmado
+# sincronizado), no de cada CT - otro falso positivo del benchmark para
+# este tipo de infraestructura, como las particiones separadas.
 
-# Zona horaria local. Los cron y timers con hora fija se interpretan en esta
-# zona. cron solo lee la zona al arrancar, de ahi el reinicio.
+# Zona horaria (2026-09-24): los CT venian en UTC de la plantilla, 2 h por
+# detras de la hora real en verano, solo el host Proxmox estaba en Madrid.
+# Ojo al cambiarla: los cron/timers con hora fija (arr 3:00/4:00, plexupdate
+# 5:00, demeter-backup 4:15) pasan a esa hora de Madrid, que es lo que dicen
+# sus comentarios; en UTC corrian 2 h mas tarde. cron solo lee la zona al
+# arrancar, de ahi el reinicio.
 - name: Zona horaria Europe/Madrid
   community.general.timezone:
     name: "{{ zona_horaria | default('Europe/Madrid') }}"
@@ -60,7 +81,7 @@
     mode: "0600"
   loop:
     - /etc/crontab
-  ignore_errors: true  # algunos hosts no tienen /etc/crontab
+  ignore_errors: true # algunos hosts (ej. Alpine, no deberia entrar en este role) no tienen /etc/crontab
 
 - name: Permisos correctos en los directorios cron.* (CIS 6.1.x)
   ansible.builtin.file:

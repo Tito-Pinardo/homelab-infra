@@ -1,11 +1,23 @@
-# Activa el firewall de Proxmox en los CT cuyo fichero .fw solo tenia
-# reglas: sin la seccion [OPTIONS] con enable: 1, Proxmox no aplica ninguna.
+---
+# Activa el firewall Proxmox de los CT cuyo .fw solo tenia [RULES].
 #
-# Uso policy_in ACCEPT a proposito: esos ficheros solo quieren bloquear
-# accesos concretos, no cerrar todo lo demas.
+# Bug real encontrado 2026-09-22: sin '[OPTIONS] enable: 1' Proxmox NO
+# aplica ninguna regla del .fw - el DROP de SSH "solo PC + VPN" (runbook
+# 2026-09-16) y el de Qdrant :6333 no bloqueaban nada (comprobado: desde
+# dockge se llegaba a ambos). Los que ya tenian enable (zabbix, wazuh,
+# paperless, agents) si filtraban.
 #
-# Antes de tocar cada .fw guardo una copia en el host. Para ir CT a CT:
-#   -e '{"pve_fw_vmids": [<vmid>]}'
+# policy_in ACCEPT a proposito: la intencion de esos .fw siempre fue "solo
+# estos DROP concretos, todo lo demas igual". enable: 1 a secas usaria la
+# politica por defecto de Proxmox (DROP) y tiraria Plex, Traefik, DNS...
+#
+# Antes de activar se auditaron 21 dias de logins SSH y de clientes de
+# Qdrant: el unico flujo legitimo que se habria roto es el rsync del vault
+# (sync-obsidian.timer) de ia-asistente (.247) -> dockge, de ahi la regla
+# extra del 122.
+#
+# Copia de seguridad de cada .fw en /root/pve-fw-backup/ del host antes de
+# tocarlo. Para ir CT a CT: -e '{"pve_fw_vmids": [110]}'
 #
 # /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
 
@@ -16,7 +28,7 @@
     - name: Anadir el host Proxmox al inventario de esta ejecucion
       ansible.builtin.add_host:
         name: pve
-        ansible_host: 192.0.2.10
+        ansible_host: 192.0.2.2
         ansible_user: root
         groups: pve_dynamic
 
@@ -24,8 +36,10 @@
   hosts: pve_dynamic
   gather_facts: false
   vars:
-    pve_fw_vmids: []        # CT a los que se aplica, en el inventario privado
-    pve_fw_extra_rules: {}  # reglas extra por CT, en el inventario privado
+    pve_fw_vmids: [106, 110, 111, 112, 114, 115, 117, 120, 121, 122, 209]
+    pve_fw_extra_rules:
+      122:
+        - "IN ACCEPT -source 192.0.2.247 -p tcp -dport 22 # ia-asistente (sync-obsidian: rsync del vault)"
   tasks:
     - name: Directorio de copias de seguridad
       ansible.builtin.file:
@@ -40,7 +54,7 @@
           line='{{ item.1 }}'
           grep -qxF "$line" "$f" && exit 0
           cp "$f" /root/pve-fw-backup/{{ item.0.key }}.fw.$(date +%Y%m%d%H%M%S)
-          awk -v l="$line" '{print} /^IN ACCEPT -source {{ admin_ssh_source | regex_escape }} -p tcp -dport 22( |$)/ && !d {print l; d=1}' "$f" > /root/pve-fw.tmp
+          awk -v l="$line" '{print} /^IN ACCEPT -source 192\.168\.1\.30 -p tcp -dport 22( |$)/ && !d {print l; d=1}' "$f" > /root/pve-fw.tmp
           grep -qxF "$line" /root/pve-fw.tmp || { echo "no se encontro donde insertar" >&2; exit 1; }
           cat /root/pve-fw.tmp > "$f" && rm -f /root/pve-fw.tmp && echo CHANGED
       register: pve_fw_extra

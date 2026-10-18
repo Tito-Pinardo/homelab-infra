@@ -1,6 +1,8 @@
 ---
-# Tautulli (estadisticas de Plex). Sin secretos propios. Los datos se
-# restauran aparte; este rol nunca los toca.
+# Tautulli (estadisticas de Plex) - sustituye al stack manual en el CT106
+# original. Sin secretos propios. Los datos (/opt/stacks/tautulli/data) se
+# copian 1:1 desde el CT106 en un paso manual aparte, igual que el resto
+# de migraciones de este repo - este role nunca los toca.
 
 - name: Crear directorio del stack
   ansible.builtin.file:

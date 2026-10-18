@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Socket Unix de la papelera de Element. Una sola accion: deshacer una
-aprobacion automatica.
+aprobacion AUTOMATICA.
 
-Va aparte del socket de consultas para que aquel siga siendo de solo
-lectura. Aqui solo se deshace lo que decidio la automatica;
-Inbox.undo_auto se niega si la ultima aprobacion la hizo una persona.
+Por que un socket aparte y no una accion mas en demeter-query: aquel es de
+solo lectura por construccion (base abierta con mode=ro, PRAGMA query_only y
+su propio sandbox), y esa garantia vale mas que ahorrarse un servicio. Aqui
+la superficie de escritura es minima y no crece: no aprueba, no edita, no
+descarta mensajes por revisar; solo deshace lo que decidio la automatica, y
+`Inbox.undo_auto` se niega si la ultima aprobacion la hizo una persona.
+
+Solo lo usa el manejador de reacciones de Hermes, que es codigo sin modelo:
+el modelo de lenguaje no tiene ninguna herramienta que llegue hasta aqui.
 """
 import json
 import os
@@ -14,18 +20,17 @@ import traceback
 from demeter_review import Inbox
 from demeter_store import Store
 
-USUARIOS = ('usuario',)
+USUARIOS = ('tito',)
 MOTIVO = 'Papelera en Element: la automatica se equivoco'
 
 
 def deshacer(database, peticion):
-    """Valida una peticion de deshacer y la aplica."""
+    """Valida la peticion y deshace. Separado del socket para poder probarlo."""
     ...
 
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
-        """Atiende una peticion de deshacer por el socket local."""
         ...
 
 

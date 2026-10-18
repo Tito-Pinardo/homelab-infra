@@ -1,4 +1,13 @@
-# Firewall de Proxmox del CT de agentes: entrada denegada por defecto y solo
-# lo imprescindible abierto (SSH de administracion y la interfaz web a traves
-# del proxy).
-# El contenido real de las reglas no se publica.
+# Gestionado por Ansible (roles/agents) - no editar a mano.
+# Este CT tiene claves para todo el homelab: politica DROP de entrada y
+# solo lo imprescindible abierto.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[RULES]
+IN ACCEPT -source 192.0.2.30 -p tcp -dport 22 # lucifer
+IN ACCEPT -source 198.51.100.0/24 -p tcp -dport 22 # Mac via WireGuard
+IN ACCEPT -source {{ agents_ui_proxy_source_ip }} -p tcp -dport {{ agents_ui_port }} # Caddy ({{ agents_ui_host }})
+IN ACCEPT -p icmp

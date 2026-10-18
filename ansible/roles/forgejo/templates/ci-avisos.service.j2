@@ -1,0 +1,19 @@
+# Generado por Ansible (role forgejo) - no editar a mano.
+[Unit]
+Description=Avisos del CI de Forgejo en Element
+After=network-online.target forgejo.service
+
+[Service]
+User=ci-avisos
+Group=git
+EnvironmentFile=/etc/forgejo/ci-avisos.env
+Environment=CI_AVISOS_PORT={{ forgejo_ci_avisos_port }}
+ExecStart=/usr/bin/python3 /usr/local/bin/ci_avisos.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

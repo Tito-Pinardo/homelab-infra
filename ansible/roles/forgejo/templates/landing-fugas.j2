@@ -1,0 +1,24 @@
+#!/bin/sh
+# Generado por Ansible (role forgejo, tasks/landing_cd_agent.yml) - no editar a mano.
+#
+# Control de fugas de la web antes de que nada salga de casa: lo pasan el
+# despliegue (landing-desplegar, antes de tocar la web y GitHub) y el pre-push
+# de los checkouts. Mismo criterio que la auditoria del 04-10: gitleaks, solo
+# la identidad publica como autor y ni IPs ni nombres internos.
+#   cd <repo de la web> && landing-fugas <rango>     (p. ej. abc123..def456)
+set -eu
+rango="${1:?uso: landing-fugas <rango de commits>}"
+
+"$HOME/.local/bin/gitleaks" git --log-opts="$rango" --redact --no-banner . \
+  || { echo "fugas: gitleaks encontró algo" >&2; exit 1; }
+
+if git log --format='%an <%ae> %cn <%ce>' "$rango" \
+    | grep -vxF '{{ landing_fugas_identidad }} {{ landing_fugas_identidad }}'; then
+  echo "fugas: hay commits con un autor que no es la identidad pública" >&2
+  exit 1
+fi
+
+if git log -p "$rango" | grep -nE '{{ landing_fugas_patron }}'; then
+  echo "fugas: hay IPs o nombres internos en lo que va a salir" >&2
+  exit 1
+fi

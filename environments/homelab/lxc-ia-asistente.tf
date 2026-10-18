@@ -1,14 +1,18 @@
-# CT del asistente: bot de Matrix, conectores (notas, correo, calendario,
-# monitorizacion) y el modelo de embeddings por CPU. El modelo de chat corre
-# en mi PC con GPU.
+# lxc-ia-asistente.tf: CT que agrupa el bot conversacional de Matrix, todos
+# los conectores (Obsidian/AMP/Zabbix-Wazuh/correo) y el Ollama de
+# EMBEDDINGS (headless, CPU, nomic-embed-text, siempre encendido - distinto
+# del Ollama de CHAT, que vive en el PC lucifer con GPU y solo esta
+# disponible mientras ese PC este encendido, ver runbook en Obsidian).
 #
-# Bot y conectores comparten vault y ciclo de vida, por eso van juntos.
+# No se separa en mas CT: bot y conectores comparten vault y ciclo de vida.
+# Mas cores que Qdrant porque la generacion de embeddings por CPU se
+# beneficia de paralelismo (el host tiene 48 cores reales de sobra).
 
 resource "proxmox_virtual_environment_container" "ia_asistente" {
   node_name    = "main"
   vm_id        = 118
   unprivileged = true
-  description  = "Asistente IA (Matrix) con sus conectores y el modelo de embeddings. Gestionado por Terraform + Ansible."
+  description  = "Bot IA (Matrix) + conectores (Obsidian/AMP/Zabbix-Wazuh/correo) + Ollama embeddings. Gestionado por Terraform + Ansible, ver ~/infra-tf."
 
   initialization {
     hostname = "ia-asistente"
@@ -19,7 +23,7 @@ resource "proxmox_virtual_environment_container" "ia_asistente" {
 
     ip_config {
       ipv4 {
-        address = "192.0.2.27/24"
+        address = "192.0.2.247/24"
         gateway = "192.0.2.1"
       }
     }
@@ -48,8 +52,14 @@ resource "proxmox_virtual_environment_container" "ia_asistente" {
   }
 
   started = true
+
+  lifecycle {
+    # RAM en caliente (docs/despliegue.md): el proveedor reinicia el CT al
+    # cambiarla; se cambia con pct set / la web y aqui queda como registro.
+    ignore_changes = [memory]
+  }
 }
 
 output "ia_asistente_ip" {
-  value = "192.0.2.27"
+  value = "192.0.2.247"
 }

@@ -13,30 +13,27 @@ _known_collections: set[str] = set()
 
 
 def _headers() -> dict:
-    """Devuelve las cabeceras para llamar a Qdrant."""
     ...
 
 
 def _embed(text: str) -> list[float]:
-    """Calcula el vector de embedding de un texto."""
     ...
 
 
 def ensure_collection(collection: str):
-    """Crea una coleccion si no existe."""
     ...
 
 
 def search(collection: str, query: str, limit: int = 5, filter_: dict | None = None) -> list[dict]:
-    """Busca por similitud en una coleccion."""
     ...
 
 
 def scroll(collection: str, filter_: dict, limit: int = 50) -> list[dict]:
-    """Lista puntos de una coleccion segun un filtro."""
+    """Lista puntos por FILTRO de payload (sin busqueda semantica) - lo usa
+    el vigilante de notificaciones proactivas de ia_bot.py para encontrar
+    correos nuevos por timestamp, no por significado."""
     ...
 
 
 def index(collection: str, point_id: str, text: str, payload: dict):
-    """Indexa un texto en una coleccion."""
     ...

@@ -1,0 +1,82 @@
+#!/bin/bash
+# Generado por Ansible (role forgejo, tasks/landing_cd_agent.yml) - no editar a mano.
+#
+# Despliegue continuo de la web personal. Lo lanza el trabajo "desplegar" del
+# workflow de la web (runner landing-despliegue) cuando su CI sale en verde en
+# main. Ver docs/landing.md.
+#
+#   1. Copia de la web en ese commit (si main ya va por otro, no hace nada:
+#      lo desplegara la ejecucion de ese otro commit).
+#   2. Control de fugas de lo que aun no es publico (landing-fugas).
+#   3. Compila en release y comprueba el contenido (landing check).
+#   4. playbooks/landing.yml desde master de infra-tf (copia el binario,
+#      reinicia y espera a /healthz).
+#   5. Empuja ese commit a GitHub (la copia publica) y comprueba la web desde fuera.
+set -euo pipefail
+sha="${1:?uso: landing-desplegar <sha>}"
+base=/home/agent/.landing-cd
+arbol="$base/arbol"
+infra="$base/infra-tf"
+export SQLX_OFFLINE=true LC_ALL=C.UTF-8 CARGO_TARGET_DIR="$base/target"
+
+# Uno a la vez (dos pushes seguidos, o un despliegue a mano).
+exec 9>"$base/cerrojo"
+flock 9
+
+paso() { printf '\n== %s\n' "$*"; }
+
+paso "Copia de la web en ${sha:0:7}"
+[ -d "$arbol/.git" ] || git clone -q '{{ landing_cd_repo }}' "$arbol"
+git -C "$arbol" remote set-url origin '{{ landing_cd_repo }}'
+git -C "$arbol" remote get-url github > /dev/null 2>&1 \
+  || git -C "$arbol" remote add github '{{ landing_cd_github }}'
+git -C "$arbol" fetch -q --prune origin
+git -C "$arbol" fetch -q github main
+punta=$(git -C "$arbol" rev-parse origin/main)
+if [ "$punta" != "$sha" ]; then
+  echo "main ya va por ${punta:0:7}: se despliega en la ejecución de ese commit."
+  exit 0
+fi
+git -C "$arbol" checkout -q -f --detach "$sha"
+git -C "$arbol" clean -qffdx
+
+paso "Control de fugas de lo que aún no es público"
+publico=$(git -C "$arbol" rev-parse github/main)
+if ! git -C "$arbol" merge-base --is-ancestor "$publico" "$sha"; then
+  echo "GitHub tiene commits que no están en Forgejo (${publico:0:7}): revisarlo a mano." >&2
+  exit 1
+fi
+if [ "$publico" = "$sha" ]; then
+  echo "Nada nuevo respecto a GitHub."
+else
+  (cd "$arbol" && landing-fugas "$publico..$sha")
+  echo "$(git -C "$arbol" rev-list --count "$publico..$sha") commit(s) revisados."
+fi
+
+paso "Compilar y comprobar el contenido"
+(cd "$arbol" && cargo build --release --locked -q)
+"$CARGO_TARGET_DIR/release/landing" check
+
+paso "Desplegar con Ansible (master de infra-tf)"
+[ -d "$infra/.git" ] || git clone -q '{{ landing_cd_infra_repo }}' "$infra"
+git -C "$infra" fetch -q origin
+git -C "$infra" checkout -q -f --detach origin/master
+(cd "$infra/ansible" && ansible-playbook playbooks/landing.yml \
+  -e "landing_binary_src=$CARGO_TARGET_DIR/release/landing")
+
+paso "Copia pública en GitHub"
+if [ "$publico" != "$sha" ]; then
+  git -C "$arbol" push -q github "$sha:refs/heads/main"
+  echo "GitHub en ${sha:0:7}."
+fi
+
+paso "Comprobación desde fuera"
+for i in 1 2 3 4 5 6; do
+  if curl -fsS -o /dev/null --max-time 10 '{{ landing_cd_public_url }}/healthz'; then
+    echo "{{ landing_cd_public_url }} responde."
+    exit 0
+  fi
+  sleep 10
+done
+echo "La web no responde desde fuera tras desplegar." >&2
+exit 1

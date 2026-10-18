@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Autorizacion inicial de Cronos (Google Calendar). Se ejecuta una sola vez a
-mano: pide un codigo de dispositivo, lo muestra y espera a que lo confirme
-desde un navegador. Despues guarda el token para cronos_client.py.
+"""
+Autorizacion INICIAL de Cronos (Google Calendar) - se ejecuta una sola vez
+a mano. Pide un codigo de dispositivo a Google, lo muestra por pantalla, y
+espera a que el usuario lo introduzca en su navegador (movil, PC, lo que
+sea - este script nunca ve ni pide contrasenas de Google). Al confirmar,
+guarda el refresh_token en disco para que cronos_client.py lo use siempre
+a partir de ahora sin volver a pedir autorizacion.
 
 Uso: python3 cronos_authorize.py
 """
@@ -19,7 +23,6 @@ TOKEN_PATH = "/var/lib/ia-bot/cronos_token.json"
 
 
 def main():
-    """Autoriza el acceso a Google Calendar mediante el flujo de dispositivo y guarda el token."""
     ...
 
 

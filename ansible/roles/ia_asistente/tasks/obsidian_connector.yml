@@ -1,5 +1,5 @@
-# Conector de notas: rsync de solo lectura desde el host de las notas. La
-# clave dedicada se autoriza con obsidian_sync_access en el rol obsidian.
+# Conector Obsidian: rsync de solo lectura desde 192.0.2.243 (dockge).
+# La clave dedicada se autoriza con obsidian_sync_access en el rol obsidian.
 
 - name: Crear usuario de sistema para el conector de Obsidian
   ansible.builtin.user:
@@ -17,15 +17,23 @@
     group: obsidian-sync
     mode: "0700"
 
-# Este usuario solo conecta a las notas.
+# Este usuario solo conecta al vault; clave verificada por SSH administrativo.
+# known_hosts y no copy: ssh anade solo las otras claves del mismo servidor
+# (UpdateHostKeys) y copy las borraba en cada ejecucion. Asi se asegura la
+# clave fijada sin pelear con ssh.
 - name: Fijar identidad SSH del servidor Obsidian para el conector
-  ansible.builtin.copy:
-    content: "{{ ia_obsidian_vault_host_key }}\n"
-    dest: /var/lib/obsidian-sync/.ssh/known_hosts
+  ansible.builtin.known_hosts:
+    path: /var/lib/obsidian-sync/.ssh/known_hosts
+    name: "{{ ia_obsidian_vault_host_key.split()[0] }}"
+    key: "{{ ia_obsidian_vault_host_key }}"
+  tags: [obsidian_sync_config]
+
+- name: El known_hosts del conector sigue siendo suyo
+  ansible.builtin.file:
+    path: /var/lib/obsidian-sync/.ssh/known_hosts
     owner: obsidian-sync
     group: obsidian-sync
     mode: "0600"
-    backup: true
   tags: [obsidian_sync_config]
 
 - name: Generar clave SSH dedicada para el conector (si no existe)
@@ -41,13 +49,15 @@
     src: /var/lib/obsidian-sync/.ssh/id_ed25519.pub
   register: obsidian_sync_pubkey
 
+# 0755: rsync le pone los permisos del vault de origen en cada sync. Lo
+# protege el directorio padre (/var/lib/ia-asistente, 0750).
 - name: Crear directorio del espejo local del vault
   ansible.builtin.file:
     path: /var/lib/ia-asistente/obsidian_mirror
     state: directory
     owner: obsidian-sync
     group: obsidian-sync
-    mode: "0750"
+    mode: "0755"
 
 - name: Desplegar el script del conector de Obsidian
   ansible.builtin.copy:
@@ -72,9 +82,9 @@
     mode: "0644"
   notify: activar timer sync-obsidian
 
-- name: Avisar la clave publica que falta anadir a 192.0.2.24 (paso manual)
+- name: Avisar la clave publica que falta anadir a 192.0.2.243 (paso manual)
   ansible.builtin.debug:
     msg: >-
       Clave publica del conector de Obsidian (anadir a
-      /root/.ssh/authorized_keys en 192.0.2.24 si no esta ya):
+      /root/.ssh/authorized_keys en 192.0.2.243 si no esta ya):
       {{ obsidian_sync_pubkey.content | b64decode | trim }}

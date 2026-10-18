@@ -1,0 +1,9 @@
+---
+# CA de casa en OpenBao (docs/ca-casa.md). Con caddy_ca_casa, Caddy pide los
+# certificados de *.home.arpa por ACME a OpenBao; sin ella, usa su CA interna.
+# Activa desde el 15-10, con la raiz ya en los dispositivos del usuario.
+caddy_ca_casa: true
+ca_casa_acme: "https://192.0.2.234:8200/v1/pki_int/acme/directory"
+# Dentro del contenedor de Caddy: la CA del listener de OpenBao (para hablar
+# con su API por HTTPS), la misma que usa bao.home.arpa.
+ca_casa_acme_raiz_caddy: /config/monitoring-cas/openbao-ca.pem

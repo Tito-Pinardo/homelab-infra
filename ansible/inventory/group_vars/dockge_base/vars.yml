@@ -1,2 +1,3 @@
-# CT dockge. Ver lxc-dockge.tf.
+# CT 122 "dockge-new", sustituye al CT 106. Ver lxc-dockge.tf y el runbook
+# para el plan de migracion por fases completo.
 dockge_ssh_allowed_sources: []  # se define en el inventario privado

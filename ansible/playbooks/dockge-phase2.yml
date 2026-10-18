@@ -1,5 +1,6 @@
 ---
-# Fase 2 de dockge: Obsidian.
+# Fase 2 de la migracion del CT106: Obsidian (maxima cautela, es la fuente
+# de verdad de la documentacion del propio proyecto).
 - name: Fase 2 - Obsidian
   hosts: obsidian
   become: true

@@ -1,0 +1,11 @@
+---
+# Solo el resumen semanal de los lunes del CT de agentes (sin tocar los CLI
+# ni Codeman): ansible-playbook playbooks/agents-digest.yml
+- name: Resumen semanal del blog en el CT de agentes
+  hosts: agents
+  become: true
+  tasks:
+    - name: Tareas del resumen
+      ansible.builtin.include_role:
+        name: agents
+        tasks_from: digest.yml

@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Resumen semanal de los lunes del blog (tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ agents_user }}
+Environment=HOME=/home/{{ agents_user }}
+Environment=PATH=/home/{{ agents_user }}/.local/bin:/home/{{ agents_user }}/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/{{ agents_user }}/.config/landing-digest/digest.env
+WorkingDirectory=/home/{{ agents_user }}/.local/share/landing-digest
+# El script se ejecuta desde el clon: se pone al día antes de cada tick para
+# que corra siempre la versión de origin/main (si no, el domingo correría la
+# que había al clonar). Si Forgejo no responde, sigue con la que tiene. El
+# origen es Forgejo desde el 14-10 (antes GitHub): set-url lo corrige en los
+# clones viejos.
+ExecStartPre=-/usr/bin/git -C /home/{{ agents_user }}/.local/share/landing-digest/repo remote set-url origin {{ agents_digest_repo }}
+ExecStartPre=-/usr/bin/git -C /home/{{ agents_user }}/.local/share/landing-digest/repo fetch -q origin
+ExecStartPre=-/usr/bin/git -C /home/{{ agents_user }}/.local/share/landing-digest/repo reset -q --hard origin/main
+ExecStart=/usr/bin/python3 /home/{{ agents_user }}/.local/share/landing-digest/repo/tools/digest/digest.py tick
+# Compilar la web y esperar a que el CI y el despliegue continuo la publiquen
+# puede tardar.
+TimeoutStartSec=60min
+Nice=10

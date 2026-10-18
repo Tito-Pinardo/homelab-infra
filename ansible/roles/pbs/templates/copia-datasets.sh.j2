@@ -1,0 +1,51 @@
+#!/bin/sh
+# Generado por Ansible (role pbs, playbooks/pbs.yml) - no editar a mano.
+#
+# Copia a PBS de datasets ZFS que las copias de los CT no incluyen (bind
+# mounts): {{ pbs_datasets | map(attribute='dataset') | join(', ') }}. Ver docs/copias.md.
+# Instantanea ZFS primero (estado coherente aunque el servidor de juego este en
+# marcha), copia incremental y cifrada desde la instantanea, y se borra.
+# Si algo falla, aviso en Element y sale con error.
+set -u
+set -a; . /etc/copias/matrix.env; set +a
+STORAGE={{ pbs_storage_pve }}
+export PBS_REPOSITORY="pve@pbs!pve@{{ hostvars['pbs'].ansible_host }}:{{ pbs_datastore }}"
+export PBS_PASSWORD="$(cat /etc/pve/priv/storage/$STORAGE.pw)"
+export PBS_FINGERPRINT="$(awk -v s="$STORAGE" '$1=="pbs:" && $2==s {f=1} f && $1=="fingerprint" {print $2; exit}' /etc/pve/storage.cfg)"
+CLAVE=/etc/pve/priv/storage/$STORAGE.enc
+SNAP=copia-pbs
+
+avisar() {
+  python3 - "$1" <<'PY'
+import json, os, sys, urllib.request
+r = urllib.request.Request(os.environ["RELAY_URL"].rstrip("/") + "/",
+    data=json.dumps({"room_id": os.environ["ROOM_ID"], "body": sys.argv[1][:4000]}).encode(),
+    headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["RELAY_SECRET"]},
+    method="POST")
+urllib.request.urlopen(r, timeout=20).read()
+PY
+}
+
+# --change-detection-mode metadata: solo relee los ficheros que cambiaron y
+# guarda el indice aparte (.mpxar), asi la prueba de restauracion puede sacar
+# ficheros sueltos sin leer el archivo entero.
+fallos=""
+{% for d in pbs_datasets %}
+# --- {{ d.id }} ({{ d.dataset }})
+zfs destroy "{{ d.dataset }}@$SNAP" 2>/dev/null
+if zfs snapshot "{{ d.dataset }}@$SNAP" && \
+   proxmox-backup-client backup "{{ d.id }}.pxar:$(zfs get -H -o value mountpoint {{ d.dataset }})/.zfs/snapshot/$SNAP" \
+     --backup-type host --backup-id "{{ d.id }}" --keyfile "$CLAVE" \
+     --change-detection-mode metadata; then
+  echo "{{ d.id }}: copia hecha"
+else
+  fallos="$fallos {{ d.id }}"
+fi
+zfs destroy "{{ d.dataset }}@$SNAP" 2>/dev/null
+{% endfor %}
+
+if [ -n "$fallos" ]; then
+  avisar "**❌ Copia de datasets fallida:**$fallos
+journalctl -u copia-datasets en el host Proxmox (docs/copias.md)"
+  exit 1
+fi

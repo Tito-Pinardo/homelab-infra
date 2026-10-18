@@ -1,0 +1,41 @@
+---
+# CT 123 como agent: lo que necesita el despliegue continuo de la web (ver
+# docs/landing.md). Scripts en ~/.local/bin y todo lo demas en ~/.landing-cd.
+#   - include_role: { name: forgejo, tasks_from: landing_cd_agent }
+
+- name: Directorios del despliegue de la web
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - /home/agent/.landing-cd
+    - /home/agent/.landing-cd/runner
+    - /home/agent/.landing-cd/trabajos
+
+- name: Scripts del despliegue y del control de fugas
+  vars:
+    landing_cd_infra_repo: "{{ forgejo_repo_url }}"
+    landing_cd_public_url: "{{ hostvars[groups['landing'][0]].landing_public_url }}"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/home/agent/.local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - landing-desplegar
+    - landing-fugas
+
+- name: Fichero de registro del runner de la web
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo-runner
+      - create-runner-file
+      - --instance
+      - "{{ forgejo_api_directa | regex_replace('/api/v1$', '') }}"
+      - --secret
+      - "{{ hostvars['forgejo'].forgejo_landing_secret }}"
+      - --name
+      - agents-landing
+    chdir: /home/agent/.landing-cd/runner
+    creates: /home/agent/.landing-cd/runner/.runner
+  no_log: true

@@ -1,4 +1,4 @@
-# Generado por Ansible (roles/arr_stack): no editar a mano, se sobrescribe.
+# Generado por Ansible (roles/arr_stack) - no editar a mano, se sobreescribe.
 services:
   # ── PROXY + AUTH ───────────────────────────────────────────
   caddy:
@@ -124,9 +124,10 @@ services:
       - TZ={{ arr_tz }}
     restart: unless-stopped
     init: true
-    # /health abre un navegador de verdad, por eso el intervalo es largo.
-    # start_interval hace que al arrancar pruebe cada pocos segundos hasta el
-    # primer OK, para que update-containers.yml no falle esperando.
+    # /health abre un navegador de verdad (~40 s), por eso interval de 15 min.
+    # start_interval: al arrancar prueba cada 5 s hasta el primer OK; sin el,
+    # tras recrearlo seguia en "starting" 15 min y update-containers.yml
+    # (wait_timeout 180) fallaba siempre que cambiaba la imagen de byparr.
     healthcheck:
       test: ["CMD-SHELL", 'curl "http://127.0.0.1:$${PORT}/health"']
       interval: 900s
@@ -174,7 +175,7 @@ services:
       - /mnt/raiz5/peliculas:/mnt/raiz5/peliculas
       - /mnt/raiz5/downloads:/mnt/raiz5/downloads
     restart: unless-stopped
-  # ── VPN (Gluetun, WireGuard + reenvio de puertos) ──
+  # ── VPN (ProtonVPN via Gluetun, WireGuard + NAT-PMP port forwarding) ──
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
@@ -184,7 +185,7 @@ services:
       - /dev/net/tun:/dev/net/tun
     ports:
       - 8080:8080 # qBittorrent WebUI
-      - 6881:6881  # BitTorrent TCP
+      - 6881:6881 # BitTorrent TCP (LAN published; real public port is Proton's forwarded one)
       - 6881:6881/udp # BitTorrent UDP
       - 7476:7476 # Qui WebUI (shares network with qbittorrent)
       - 9117:9117 # Jackett
@@ -195,14 +196,14 @@ services:
       - VPN_SERVICE_PROVIDER=protonvpn
       - VPN_TYPE=wireguard
       - WIREGUARD_PRIVATE_KEY={{ arr_wireguard_private_key }}
-      - WIREGUARD_ADDRESSES=198.51.100.50/32
-      - SERVER_COUNTRIES={{ arr_vpn_server_countries }}
+      - WIREGUARD_ADDRESSES=10.2.0.2/32
+      - SERVER_COUNTRIES=Spain
       - VPN_PORT_FORWARDING=on
       - VPN_PORT_FORWARDING_PROVIDER=protonvpn
       - PORT_FORWARD_ONLY=on
       - TZ={{ arr_tz }}
-      - FIREWALL_OUTBOUND_SUBNETS={{ arr_gluetun_outbound_subnets }}
-      - FIREWALL_INPUT_PORTS={{ arr_gluetun_input_ports }}
+      - FIREWALL_OUTBOUND_SUBNETS=192.0.2.0/24
+      - FIREWALL_INPUT_PORTS=8080,7476,9117,9696,8191
       - HTTP_CONTROL_SERVER_ADDRESS=:8000
       - VPN_INTERFACE_MTU=1280
       - HEALTH_TARGET_ADDRESSES=1.1.1.1:443
@@ -234,7 +235,7 @@ services:
       - /mnt/raiz5/downloads:/mnt/raiz5/downloads
       - /mnt/raiz5/libros:/mnt/raiz5/libros
     restart: unless-stopped
-  # ── PORT SYNC (mantiene el puerto de qBittorrent igual al reenviado por la VPN) ──
+  # ── PORT SYNC (keeps qBittorrent listen port = Proton forwarded port) ──
   gluetun-qb-sync:
     image: mjmeli/qbittorrent-port-forward-gluetun-server:latest
     container_name: gluetun-qb-sync
@@ -245,11 +246,11 @@ services:
       qbittorrent:
         condition: service_started
     environment:
-      - QBT_USERNAME={{ arr_qbittorrent_user }}
+      - QBT_USERNAME=admin
       - QBT_PASSWORD={{ arr_qbittorrent_password }}
       - QBT_ADDR=http://localhost:8080
       - GTN_ADDR=http://localhost:8000
-      - GTN_USERNAME={{ arr_gluetun_control_user }}
+      - GTN_USERNAME=gluetun
       - GTN_PASSWORD={{ arr_gluetun_control_password }}
       - INTERVAL=60
     restart: unless-stopped

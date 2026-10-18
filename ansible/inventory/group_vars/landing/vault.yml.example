@@ -1,0 +1,11 @@
+# Secretos del grupo: en OpenBao (infra-tf/grupos/landing), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_landing_ip_hash_salt: "CAMBIAR"
+vault_landing_matrix_access_token: "CAMBIAR"
+vault_landing_matrix_homeserver: "CAMBIAR"
+vault_landing_matrix_password: "CAMBIAR"
+vault_landing_matrix_room_id: "CAMBIAR"
+vault_landing_matrix_user: "CAMBIAR"
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

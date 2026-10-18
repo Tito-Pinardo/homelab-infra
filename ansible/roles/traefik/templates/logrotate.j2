@@ -1,0 +1,13 @@
+# Gestionado por Ansible (rol traefik). Diario, dos semanas. USR1 hace que
+# Traefik reabra sus logs; CrowdSec sigue el fichero nuevo solo.
+/var/log/traefik/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    postrotate
+        systemctl kill -s USR1 traefik.service >/dev/null 2>&1 || true
+    endscript
+}

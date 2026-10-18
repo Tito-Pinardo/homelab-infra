@@ -1,27 +1,37 @@
-# Technitium DNS. Ver lxc-technitium.tf y ansible/roles/technitium.
+# Technitium DNS (CT 120, sustituye al CT 116 - ver lxc-technitium.tf y
+# ansible/roles/technitium para el porque de cada pieza: DNAT 53->5300,
+# guard de nftables, canario pre-cutover). Promovido a definitivo
+# 2026-09-18, IP .45 en produccion.
 #
-# Versiones fijadas del runtime .NET y de Technitium para que volver a
-# aplicar no traiga sorpresas.
+# Version fijada del runtime .NET y del propio Technitium - igual que el
+# resto del repo (zabbix-agent2, wazuh-agent van con version pinneada), para
+# que un "vuelve a aplicar" no traiga sorpresas por un release nuevo.
 technitium_dotnet_version: "10.0"
 technitium_download_url: "https://download.technitium.com/dns/DnsServerPortable.tar.gz"
 
-# Subred con permiso para usar el puerto interno de Technitium.
+# Subred LAN con permiso para hablar con el puerto interno de Technitium
+# (5300 tcp/udp) - ver casa-technitium-guard.nft en el CT116 real.
 technitium_lan_subnet: "192.0.2.0/24"
 
-# Unico origen con permiso para el panel web de Technitium: el proxy de la
-# red local.
-technitium_web_proxy_source_ip: "192.0.2.24"
+# Unico origen con permiso para hablar con el panel web HTTPS (53443): el
+# Caddy que sirve *.home.arpa hoy vive en el Docker host (CT106, dockge).
+technitium_web_proxy_source_ip: "192.0.2.243"
 
-# Nombre que se usa como comprobacion antes de redirigir el DNS hacia
-# Technitium. Tiene que existir en las zonas.
-technitium_canary_hostname: "wazuh.home.example"
+# Hostname ya presente en las zonas reales (home.lan) que casa-dns-destino
+# usa como canario: antes de redirigir el puerto 53 real hacia Technitium,
+# comprueba que este responde bien a esta consulta. Si cambia el nombre de
+# esa zona/registro habria que actualizar esto tambien.
+technitium_canary_hostname: "wazuh.home.arpa"
 
-# Firewall propio del CT: SSH restringido, sin tocar la politica del resto
-# de puertos porque Technitium sirve a toda la LAN.
+# Firewall propio del CT (SSH restringido a PC+VPN, sin tocar la politica
+# por defecto - mismo patron "quirurgico" que traefik/element/synapse/...,
+# NO el patron aislado DROP de zabbix/wazuh/paperless: Technitium sirve DNS
+# y el panel web a toda la LAN, no solo SSH).
 technitium_ssh_allowed_sources: []  # se define en el inventario privado
 
-# FIM (Wazuh): vigilancia extra de la configuracion, las zonas DNS y las
-# reglas nftables. Ver roles/monitoring/templates/ossec.conf.j2.
+# FIM (Wazuh) - misma vigilancia extra que tenia el CT116 original
+# (fim-technitium.py, aplicado a mano 2026-09-13): config/zonas de DNS y las
+# reglas de nftables que las protegen. Ver roles/monitoring/templates/ossec.conf.j2.
 wazuh_extra_syscheck_dirs:
   - /etc/dns/dns.config
   - /etc/dns/webservice.config

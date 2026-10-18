@@ -1,0 +1,53 @@
+---
+# Abre/cierra en el MikroTik y en Cloudflare los servidores de AMP segun
+# esten encendidos o no. Corre en el CT dns-sync (Alpine) porque ya tiene el
+# token de Cloudflare. Ver docs/amp-publicar.md.
+
+- name: Instalar python3 (el script solo usa la biblioteca estandar)
+  community.general.apk:
+    name: python3
+    state: present
+
+- name: Desplegar el script
+  ansible.builtin.copy:
+    src: amp-publicar.py
+    dest: /usr/local/bin/amp-publicar.py
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Carpeta de ficheros del script
+  ansible.builtin.file:
+    path: /usr/local/share/amp-publicar
+    state: directory
+    mode: "0755"
+
+- name: Plantilla de MiniMOTD e icono estandar para servidores nuevos
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/share/amp-publicar/{{ item }}"
+    mode: "0644"
+  loop: [minimotd-servidor.conf, minimotd-estandar.png]
+
+- name: Carpeta de estado y copias de velocity.toml
+  ansible.builtin.file:
+    path: /var/lib/amp-publicar
+    state: directory
+    mode: "0700"
+
+- name: Desplegar la configuracion (lleva secretos, solo root)
+  ansible.builtin.template:
+    src: amp-publicar.json.j2
+    dest: /etc/amp-publicar.json
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: Ejecutar cada minuto
+  ansible.builtin.cron:
+    name: "publicar servidores de AMP (router + Cloudflare)"
+    # flock: si una pasada tarda mas de un minuto, la siguiente no se solapa
+    # (dos pasadas a la vez crearian reglas duplicadas).
+    job: "flock -n /run/amp-publicar.lock /usr/local/bin/amp-publicar.py >> /var/log/amp-publicar.log 2>&1"
+    user: root
+    state: "{{ 'present' if amp_publicar_activo else 'absent' }}"

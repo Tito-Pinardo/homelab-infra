@@ -1,0 +1,14 @@
+---
+- name: Actualizar los certificados del sistema
+  ansible.builtin.command: update-ca-certificates
+  changed_when: true
+  notify: Reiniciar lo que guarda las raices en memoria
+
+# Los procesos de larga duracion (Go, Rust, Perl) leen las raices al arrancar:
+# sin reiniciarlos siguen rechazando la CA nueva. El 15-10 el runner del CI
+# dejo de coger trabajos al pasar Caddy a la CA de casa por esto.
+- name: Reiniciar lo que guarda las raices en memoria
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ ca_casa_reiniciar | default([]) }}"

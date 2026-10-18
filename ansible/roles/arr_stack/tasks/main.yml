@@ -1,7 +1,12 @@
 ---
-# Stack de Caddy + Authelia + arr. Este rol solo gestiona compose.yaml y el
-# Caddyfile. Los /config de cada servicio, Authelia, los certificados de
-# Caddy y los scripts de qBittorrent/arr son estado y se restauran aparte.
+# Stack grande (Caddy+Authelia+arr, 12 servicios) - sustituye al stack
+# manual en el CT106 original. Este role SOLO gestiona compose.yaml y
+# Caddyfile (lo que antes se editaba a mano en Dockge). Todo lo demas -
+# los /config de cada servicio, el directorio de Authelia (BD+claves
+# OIDC+sesiones), los certificados de Caddy, y los 4 scripts custom de
+# qBittorrent/arr con su cron - son estado real, se copian 1:1 desde el
+# CT106 en un paso manual aparte (igual que en el resto de migraciones de
+# este repo). Este role nunca los toca ni los regenera.
 
 - name: Crear estructura de directorios del stack
   ansible.builtin.file:
@@ -23,20 +28,26 @@
   ansible.builtin.template:
     src: Caddyfile.j2
     dest: /opt/stacks/arr/proxy/Caddyfile
-    # 0600: lleva una credencial. Caddy corre como root en su contenedor.
+    # 0600: lleva la credencial de Codeman (agents.home.arpa). Caddy corre
+    # como root en su contenedor, lo sigue leyendo.
     mode: "0600"
   no_log: true # el diff/contenido incluye esa credencial
-  # El Caddyfile esta montado como fichero suelto: la plantilla lo reemplaza
-  # (inode nuevo) y el contenedor seguiria viendo el viejo, asi que hay que
-  # reiniciar el contenedor.
+  # El Caddyfile esta montado como fichero suelto en el contenedor: el
+  # template lo reemplaza (inode nuevo) y el contenedor seguiria viendo el
+  # viejo - 'caddy reload' no basta, hay que reiniciar el contenedor.
   notify: reiniciar caddy
-  # Permite aplicar solo el proxy sin el resto del rol:
+  # Permite aplicar SOLO el proxy sin arrastrar el resto del role (p. ej.
+  # el chown recursivo de los discos de medios):
   #   ansible-playbook playbooks/dockge-phase3.yml --tags caddy
   tags: [caddy]
 
 - name: Crear directorios de config por servicio si no existen (primer despliegue, sin datos restaurados todavia)
-  # El propietario no es uniforme: algunos servicios corren con otro
-  # usuario, y un owner unico pisaria su propiedad en cada pasada.
+  # Propietario por servicio - NO es uniforme (gotcha real 2026-09-19: un
+  # 'owner' unico aqui pisaba la propiedad real de profilarr/gluetun en
+  # cada pasada del playbook, deshaciendo la correccion manual hecha tras
+  # restaurar los datos del CT106). Confirmado contra el CT106 original:
+  # profilarr corre como 1000:1000 (no 568:44 como el resto), gluetun como
+  # root.
   ansible.builtin.file:
     path: "/opt/stacks/arr/configs/{{ item.name }}"
     state: directory
@@ -68,9 +79,18 @@
     - caddy_config
     - authelia
 
-# El CT es sin privilegios (idmap +100000): los discos de medios del host
-# deben pertenecer al UID/GID desplazado para que los servicios puedan
-# escribir.
+# Gotcha real 2026-09-19: el CT106 original era PRIVILEGIADO (host UID 568
+# pasaba 1:1), el CT122 nuevo es SIN PRIVILEGIOS (idmap por defecto,
+# +100000) - los discos de medios (bind-mounts del host, fuera de este CT)
+# seguian con el propietario antiguo (568:44 crudo), que dentro de un LXC
+# sin privilegios no mapea a nada valido -> radarr/sonarr/qbittorrent
+# (PUID/PGID 568:44) no podian escribir. Fix: el propietario real en el
+# HOST debe ser 100568:100044 (568+100000 : 44+100000) para que aparezca
+# como 568:44 DENTRO del CT. Confirmado seguro para Plex (CT117, tambien
+# sin privilegios pero con idmap de grupo especial que NO desplaza el 44):
+# Plex lee estos mismos discos via el permiso "otros" (modo 2775/664 ya
+# existente), no depende de que el grupo coincida - verificado con
+# 'runuser -u plex' tras aplicar este chown, sigue leyendo sin problema.
 - name: Fijar propietario correcto de los discos de medios para el idmap sin privilegios de este CT
   ansible.builtin.file:
     path: "{{ item }}"
@@ -91,11 +111,11 @@
     - /mnt/raiz5/series
     - /mnt/raiz5/downloads
     - /mnt/raiz5/libros
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
 
 - name: Levantar el stack
   community.docker.docker_compose_v2:
@@ -103,8 +123,10 @@
     state: present
     pull: missing
 
-# Crons de los scripts de mantenimiento de descargas. Los scripts son datos
-# que se restauran aparte; aqui solo se declara cuando se ejecutan.
+# Los 3 crons custom (limpieza de seeding + fallback eMuwarez + mapping en
+# espanol) - los scripts en si (post_download.sh, cleanup_seeded.sh,
+# auto_grab_radarr.py, auto_spanish_mapping.py) son datos que se copian
+# 1:1, ver arriba. Aqui solo se declara CUANDO se ejecutan.
 - name: Cron - limpieza de torrents seedeados (cada 15 min)
   ansible.builtin.cron:
     name: "arr: cleanup_seeded"
@@ -118,3 +140,9 @@
     minute: "0"
     job: "python3 /opt/stacks/arr/scripts/auto_spanish_mapping.py >> /var/log/auto_spanish_mapping.log 2>&1"
 
+- name: Cron - fallback eMuwarez para peliculas pendientes (4am)
+  ansible.builtin.cron:
+    name: "arr: auto_grab_radarr"
+    hour: "4"
+    minute: "0"
+    job: "python3 /opt/stacks/arr/scripts/auto_grab_radarr.py >> /var/log/auto_grab_radarr.log 2>&1"

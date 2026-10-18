@@ -1,0 +1,9 @@
+---
+# Ojo: reiniciar OpenBao lo SELLA. Hay que desellarlo a mano despues
+# (docs/openbao.md). Por eso solo se reinicia si cambia el binario o la
+# configuracion.
+- name: Reiniciar openbao
+  ansible.builtin.systemd:
+    name: openbao
+    state: restarted
+    daemon_reload: true

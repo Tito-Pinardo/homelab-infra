@@ -10,16 +10,25 @@
     - /etc/traefik/ssl
     - /var/log/traefik
 
+# Un directorio por version: con /tmp y 'creates: /tmp/traefik', si quedaba el
+# binario de la version anterior no se descargaba la nueva y se reinstalaba
+# la vieja (visto el 15-10 con el PR de Renovate).
+- name: Directorio de la version {{ traefik_version }}
+  ansible.builtin.file:
+    path: "/opt/traefik-{{ traefik_version }}"
+    state: directory
+    mode: "0755"
+
 - name: Descargar y extraer el binario de Traefik {{ traefik_version }}
   ansible.builtin.unarchive:
     src: "https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_amd64.tar.gz"
-    dest: /tmp
+    dest: "/opt/traefik-{{ traefik_version }}"
     remote_src: true
-    creates: /tmp/traefik
+    creates: "/opt/traefik-{{ traefik_version }}/traefik"
 
 - name: Instalar el binario en /usr/bin
   ansible.builtin.copy:
-    src: /tmp/traefik
+    src: "/opt/traefik-{{ traefik_version }}/traefik"
     dest: /usr/bin/traefik
     mode: "0755"
     remote_src: true
@@ -73,8 +82,10 @@
   notify: reiniciar traefik
 
 - name: Listar ficheros de router ya presentes en conf.d
-  # Para detectar las rutas que ya no estan en traefik_routes y borrarlas:
-  # watch: true las recarga pero nunca las borra.
+  # Necesario para el paso siguiente: detectar los que ya no corresponden a
+  # ninguna entrada de traefik_routes (se quito el servicio) y borrarlos -
+  # si no, el fichero se queda sirviendo para siempre (watch: true los
+  # recarga pero nunca los borra solo).
   ansible.builtin.find:
     paths: /etc/traefik/conf.d
     patterns: "*.yml"
@@ -98,6 +109,49 @@
     mode: "0600"
   notify: reiniciar traefik
 
+- name: Rotacion de los logs de Traefik
+  ansible.builtin.template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/traefik
+    mode: "0644"
+
+# Plugin del bouncer de CrowdSec, de una version fija y cargado del disco.
+- name: Directorio del plugin de CrowdSec {{ traefik_crowdsec_plugin_version | default('') }}
+  ansible.builtin.file:
+    path: "/opt/crowdsec-traefik-plugin-{{ traefik_crowdsec_plugin_version }}"
+    state: directory
+    mode: "0755"
+  when: traefik_crowdsec | default(false)
+  register: traefik_plugin_dir
+
+- name: Descargar el plugin de CrowdSec
+  ansible.builtin.unarchive:
+    src: "https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/archive/refs/tags/{{ traefik_crowdsec_plugin_version }}.tar.gz"
+    dest: "/opt/crowdsec-traefik-plugin-{{ traefik_crowdsec_plugin_version }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "/opt/crowdsec-traefik-plugin-{{ traefik_crowdsec_plugin_version }}/.traefik.yml"
+  when:
+    - traefik_crowdsec | default(false)
+    # En el plan, el directorio de una version nueva aun no existe.
+    - not (ansible_check_mode and traefik_plugin_dir.changed)
+
+- name: Carpeta de plugins locales
+  ansible.builtin.file:
+    path: /etc/traefik/plugins-local/src/github.com/maxlerebourg
+    state: directory
+    mode: "0755"
+  when: traefik_crowdsec | default(false)
+
+- name: Enlazar la version del plugin
+  ansible.builtin.file:
+    src: "/opt/crowdsec-traefik-plugin-{{ traefik_crowdsec_plugin_version }}"
+    dest: /etc/traefik/plugins-local/src/github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+    state: link
+    force: true
+  when: traefik_crowdsec | default(false)
+  notify: reiniciar traefik
+
 - name: Desplegar unidad systemd
   ansible.builtin.template:
     src: traefik.service.j2
@@ -113,9 +167,13 @@
     daemon_reload: true
 
 - name: Asegurar CNAME en Cloudflare para cada ruta de example.org
-  # Crea en Cloudflare el DNS de cada ruta nueva. Se ejecuta en el nodo de
-  # control porque es una llamada a la API de Cloudflare. Solo cubre la zona
-  # principal.
+  # Sin esto, una ruta nueva en traefik_routes queda con TLS/routing listo
+  # pero sigue dando "no se puede entrar" hasta crear el DNS a mano en el
+  # panel de Cloudflare. Se ejecuta en el nodo de control (localhost), no en
+  # el CT de Traefik - es una llamada a la API de Cloudflare, no config local.
+  # Solo cubre example.org: el token de vault.yml no tiene acceso a las
+  # zonas example.net / titopinardogutierrez.com (comprobado con la API,
+  # "zone not found") - esas dos rutas se excluyen con el regex de abajo.
   community.general.cloudflare_dns:
     zone: "example.org"
     record: "{{ item.host }}"
@@ -125,12 +183,13 @@
     state: present
     api_token: "{{ traefik_cloudflare_api_token }}"
   delegate_to: localhost
+  become: false  # llamada a la API; con become fallaba desde agents (sudo pide contraseña)
   loop: "{{ traefik_routes + ([{'host': traefik_dashboard_host}] if traefik_dashboard_public | default(true) else []) }}"
   loop_control:
     label: "{{ item.host }}"
   when:
     - traefik_cloudflare_api_token is defined
-    - item.host is regex('\.example\.org$')
+    - item.host is regex('\.example.org$')
 
 - name: Resolver zone_id de example.org en Cloudflare
   ansible.builtin.uri:
@@ -139,19 +198,24 @@
       Authorization: "Bearer {{ traefik_cloudflare_api_token }}"
     return_content: true
   delegate_to: localhost
+  become: false  # llamada a la API; con become fallaba desde agents (sudo pide contraseña)
   register: cf_zone_lookup
+  check_mode: false  # solo lee (GET): tambien en el plan
   when: traefik_cloudflare_api_token is defined
 
 - name: Listar en Cloudflare los CNAME gestionados por este role (content=example.org)
-  # Solo estos registros son gestionados por este rol: cualquier otro de la
-  # zona (MX, TXT, apex, CNAME manuales) no pasa el filtro y nunca se borra.
+  # Solo estos son "nuestros" - cualquier otro registro de la zona (MX, TXT,
+  # SPF/DKIM, el A del apex, un CNAME manual a otro sitio...) no matchea este
+  # filtro y el paso de borrado de abajo nunca lo tocara.
   ansible.builtin.uri:
     url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_lookup.json.result[0].id }}/dns_records?type=CNAME&content=example.org&per_page=100"
     headers:
       Authorization: "Bearer {{ traefik_cloudflare_api_token }}"
     return_content: true
   delegate_to: localhost
+  become: false  # llamada a la API; con become fallaba desde agents (sudo pide contraseña)
   register: cf_managed_records
+  check_mode: false  # solo lee (GET): tambien en el plan
   when: traefik_cloudflare_api_token is defined
 
 - name: Borrar en Cloudflare los CNAME gestionados que ya no estan en traefik_routes
@@ -163,9 +227,10 @@
     state: absent
     api_token: "{{ traefik_cloudflare_api_token }}"
   delegate_to: localhost
+  become: false  # llamada a la API; con become fallaba desde agents (sudo pide contraseña)
   loop: "{{ cf_managed_records.json.result | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
   when:
     - traefik_cloudflare_api_token is defined
-    - item.name not in ((traefik_routes | default([]) | selectattr('host', 'regex', '\.example\.org$') | map(attribute='host') | list) + ([traefik_dashboard_host] if traefik_dashboard_public | default(true) else []) + (cloudflare_protected_records | default([])))
+    - item.name not in ((traefik_routes | default([]) | selectattr('host', 'regex', '\.example.org$') | map(attribute='host') | list) + ([traefik_dashboard_host] if traefik_dashboard_public | default(true) else []) + (cloudflare_protected_records | default([])))

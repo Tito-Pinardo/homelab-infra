@@ -1,0 +1,60 @@
+---
+# Repo privado de la copia publica (docs/publico.md): main es lo publicado en
+# GitHub y la rama "propuesta", lo que espera revision. Lo rellena
+# scripts/publico/publicar.py desde el runner de despliegue.
+- name: Comprobar si existe el repo de la copia publica
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_publico }}"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: forgejo_publico_repo
+  no_log: true
+
+- name: Crear el repo de la copia publica (privado)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/user/repos"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ forgejo_repo_publico }}"
+      private: true
+      default_branch: main
+      description: "{{ forgejo_repo_publico_descripcion }}"
+    status_code: [201]
+  when: forgejo_publico_repo.status == 404
+  changed_when: true
+  no_log: true
+
+- name: Protecciones de rama de la copia publica
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_publico }}/branch_protections"
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+  register: forgejo_publico_protecciones
+  no_log: true
+
+# main avanza solo con lo revisado (push normal) y nunca se reescribe: es la
+# historia que ya esta en GitHub.
+- name: Proteger main de la copia publica (sin force push)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_port }}/api/v1/repos/{{ forgejo_admin_user }}/{{ forgejo_repo_publico }}/branch_protections"
+    method: POST
+    user: "{{ forgejo_admin_user }}"
+    password: "{{ forgejo_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      rule_name: main
+      enable_push: true
+      enable_force_push: false
+      required_approvals: 0
+    status_code: [201]
+  when: "'main' not in (forgejo_publico_protecciones.json | map(attribute='rule_name') | list)"
+  changed_when: true
+  no_log: true

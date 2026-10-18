@@ -1,4 +1,4 @@
-"""Extractor conservador de texto tienda online.es, sin red ni ejecución de instrucciones.
+"""Extractor conservador de texto Amazon.es, sin red ni ejecución de instrucciones.
 
 Produce candidatos, nunca movimientos. Las coincidencias no autentican remitentes.
 HTML/PDF deben convertirse en texto por el futuro recolector conservando su origen.
@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from email.utils import parseaddr
 from demeter_invoices import extract_invoice
-from demeter_marketplace import extract_marketplace
+from demeter_amazon import extract_amazon
 from demeter_tiendas import extract_tienda
 
 VERSION = 'purchases-tiendas-v6'
@@ -18,10 +18,11 @@ DATE = re.compile(r'^[ \t]*fecha del pedido[ \t]*:[ \t]*(\d{2}/\d{2}/\d{4}|\d{4}
 
 
 def money(text):
-    """Interpreta un importe escrito en formato espanol."""
+    """Solo formato español explícito. Nunca inferir moneda a partir de '$'."""
     ...
 
 
 def extract(sender, subject, body, received_on=None):
-    """Extrae los datos de compra de un correo."""
+    """`received_on` es la fecha del correo; solo la usa quien puede
+    justificarla como fecha de compra (un resguardo se envía al comprarlo)."""
     ...

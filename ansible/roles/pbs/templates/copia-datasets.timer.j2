@@ -1,0 +1,10 @@
+# Generado por Ansible (role pbs, playbooks/pbs.yml) - no editar a mano.
+[Unit]
+Description=Copia diaria a PBS de datasets ZFS fuera de los CT
+
+[Timer]
+OnCalendar=*-*-* {{ pbs_hora_datasets }}:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

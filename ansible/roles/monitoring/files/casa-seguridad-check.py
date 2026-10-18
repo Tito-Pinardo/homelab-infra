@@ -1,43 +1,32 @@
 #!/usr/bin/python3
-# Comprobaciones de seguridad locales que consulta el agente de monitorizacion.
 import pathlib,subprocess,stat,sys,xml.etree.ElementTree as E
-def text(p):
-    """Lee un fichero como texto."""
     ...
 def secure(p,mask):
-    """Comprueba propietario y permisos de un fichero."""
     ...
 def ssh():
-    """Devuelve la configuracion efectiva de SSH."""
     ...
-def xml():
-    """Devuelve la configuracion del agente de seguridad."""
     ...
 def auth():
-    """Comprueba la configuracion de autenticacion de SSH."""
     ...
 def limits():
-    """Comprueba los limites de intentos de SSH."""
     ...
 def macs():
-    """Comprueba los algoritmos MAC de SSH."""
     ...
 def remote_commands():
-    """Comprueba que los comandos remotos del agente estan desactivados."""
     ...
-# Comprobaciones disponibles (se pasa el nombre como argumento):
-#   shadowed, empty_passwords, uid0, gid0  - cuentas y contrasenas del sistema
-#   shadow_permissions, ssh_permissions, cron_permissions - permisos de ficheros sensibles
-#   pam_nullok                              - PAM no admite contrasenas vacias
-#   ssh_auth, ssh_limits, ssh_macs          - configuracion de SSH
-#   active_response, remote_commands, fim   - configuracion del agente de seguridad
-# Imprime PASS o FAIL, o ERROR si no se pudo verificar.
-checks = {}
-
-
-def main():
-    """Ejecuta la comprobacion pedida e imprime su resultado."""
-    ...
-
-
-main()
+checks={
+ 'shadowed':lambda:all(l.split(':')[1]=='x' for l in text('/etc/passwd').splitlines()),
+ 'empty_passwords':lambda:not any(l.split(':')[1]=='' for l in text('/etc/shadow').splitlines()),
+ 'uid0':lambda:[l.split(':')[0] for l in text('/etc/passwd').splitlines() if l.split(':')[2]=='0']==['root'],
+ 'gid0':lambda:[l.split(':')[0] for l in text('/etc/group').splitlines() if l.split(':')[2]=='0']==['root'],
+ 'shadow_permissions':lambda:secure('/etc/shadow',0o027),
+ 'ssh_permissions':lambda:secure('/etc/ssh/sshd_config',0o077),
+ 'cron_permissions':lambda:secure('/etc/crontab',0o077) and all(secure('/etc/cron.'+x,0o077) for x in ['d','hourly','daily','weekly','monthly']),
+ 'pam_nullok':lambda:not any('nullok' in l.split() for p in pathlib.Path('/etc/pam.d').glob('common-*') for l in p.read_text().splitlines() if not l.lstrip().startswith('#')),
+ 'ssh_auth':auth,'ssh_limits':limits,'ssh_macs':macs,
+ 'active_response':lambda:bool(xml().findall('.//active-response')) and all(x.findtext('disabled')=='yes' for x in xml().findall('.//active-response')),
+ 'remote_commands':remote_commands,
+ 'fim':lambda:xml().find('.//syscheck') is not None and xml().findtext('.//syscheck/disabled')!='yes' and all(x.get('report_changes','no')=='no' for x in xml().findall('.//syscheck/directories')),
+}
+try:print('PASS' if checks[sys.argv[1]]() else 'FAIL')
+except Exception:print('ERROR: no verificado');sys.exit(1)

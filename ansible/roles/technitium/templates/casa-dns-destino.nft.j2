@@ -1,3 +1,12 @@
-# Reglas nftables que redirigen las consultas DNS que llegan al CT hacia el
-# puerto interno de Technitium.
-# El contenido real de las reglas no se publica.
+table inet casa_dns_destino {
+ chain entrada {
+  type nat hook prerouting priority dstnat; policy accept;
+  fib daddr type local udp dport 53 counter redirect to :5300
+  fib daddr type local tcp dport 53 counter redirect to :5300
+ }
+ chain local {
+  type nat hook output priority -100; policy accept;
+  fib daddr type local udp dport 53 counter redirect to :5300
+  fib daddr type local tcp dport 53 counter redirect to :5300
+ }
+}

@@ -1,0 +1,6 @@
+---
+- name: Reiniciar landing
+  ansible.builtin.systemd:
+    name: landing
+    state: restarted
+    daemon_reload: true

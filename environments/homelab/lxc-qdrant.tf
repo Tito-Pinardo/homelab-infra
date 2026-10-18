@@ -1,13 +1,18 @@
-# CT de Qdrant (base de datos vectorial del asistente). Va aparte del CT del
-# asistente porque es el unico componente con estado persistente importante.
+# lxc-qdrant.tf: CT dedicado a Qdrant (base de datos vectorial), parte del
+# proyecto "asistente IA + base semantica" (ver runbook en Obsidian).
+# Separado del CT ia-asistente aposta: Qdrant es el unico componente con
+# estado persistente critico de todo el proyecto (todos los embeddings
+# viven aqui) - mezclarlo con el bot/conectores (que no tienen estado que
+# de verdad duela perder) complicaria backups sin necesidad.
 #
-# Sin Docker: binario oficial de una release fijada con systemd.
+# Sin Docker: mismo patron binario+systemd que Traefik (el role instala el
+# binario oficial de una release de GitHub fijada, no ":latest").
 
 resource "proxmox_virtual_environment_container" "qdrant" {
   node_name    = "main"
   vm_id        = 115
   unprivileged = true
-  description  = "Qdrant, base de datos vectorial del asistente IA. Gestionado por Terraform + Ansible."
+  description  = "Qdrant (base de datos vectorial) - backend del asistente IA. Gestionado por Terraform + Ansible, ver ~/infra-tf."
 
   initialization {
     hostname = "qdrant"
@@ -18,7 +23,7 @@ resource "proxmox_virtual_environment_container" "qdrant" {
 
     ip_config {
       ipv4 {
-        address = "192.0.2.26/24"
+        address = "192.0.2.246/24"
         gateway = "192.0.2.1"
       }
     }
@@ -47,8 +52,14 @@ resource "proxmox_virtual_environment_container" "qdrant" {
   }
 
   started = true
+
+  lifecycle {
+    # RAM en caliente (docs/despliegue.md): el proveedor reinicia el CT al
+    # cambiarla; se cambia con pct set / la web y aqui queda como registro.
+    ignore_changes = [memory]
+  }
 }
 
 output "qdrant_ip" {
-  value = "192.0.2.26"
+  value = "192.0.2.246"
 }

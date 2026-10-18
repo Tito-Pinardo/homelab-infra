@@ -1,8 +1,11 @@
-# Ollama solo para embeddings, por CPU, en este CT. El modelo de chat vive en
-# mi PC.
+# Ollama SOLO para generar embeddings (nomic-embed-text) en este CT - por
+# CPU, headless, siempre encendido. Distinto del Ollama de CHAT, que vive en
+# el PC lucifer (GPU) y consulta ia_bot.py por red - ver group_vars y el
+# runbook "Asistente IA + base semantica" en Obsidian.
 #
-# El tarball oficial trae librerias CUDA/ROCm que un CT sin GPU no usa; las
-# excluyo al extraer.
+# El tarball oficial (.tar.zst) trae librerias CUDA/ROCm de sobra (~1.4GB)
+# que este CT sin GPU nunca usara - se excluyen al extraer para no
+# desperdiciar disco/ancho de banda en cada despliegue.
 
 - name: Crear usuario de sistema para Ollama
   ansible.builtin.user:

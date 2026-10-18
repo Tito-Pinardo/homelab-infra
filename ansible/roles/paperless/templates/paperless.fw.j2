@@ -1,3 +1,10 @@
-# Firewall de Proxmox del CT de Paperless: entrada denegada por defecto y acceso
-# solo desde los origenes y puertos de paperless_firewall_allowed_tcp.
-# El contenido real de las reglas no se publica.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[RULES]
+{% for rule in paperless_firewall_allowed_tcp %}
+IN ACCEPT -source {{ rule.source }} -p tcp -dport {{ rule.port }}
+{% endfor %}
+IN ACCEPT -source 192.0.2.0/24 -p icmp

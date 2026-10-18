@@ -1,11 +1,20 @@
-# CT dns-sync: mantiene los registros A de mis dominios apuntando a la IP
-# publica dinamica. Es un script con cron, por eso uso Alpine.
+# lxc-dns-sync.tf: sustituye al CT 105 "Scripts". Se investigo su contenido
+# real antes de migrar (ver runbook) - de todo lo que habia, lo UNICO
+# realmente en uso son los 3 scripts que sincronizan el registro A de
+# example.org/titopinardogutierrez.com/example.net con la IP WAN
+# dinamica cada 5 min. Todo lo demas (endurecer-base.py, inspeccionar-
+# sistemas.py, manual/, Postfix, un contenedor Docker muerto) confirmado
+# sin uso por el propio usuario - no se migra.
+#
+# Alpine en vez de Debian (primera vez en este repo) - carga de trabajo real
+# es un script + cron, Alpine no necesita nada de lo que trae Debian para
+# esto. Coste: primer role de Ansible con apk/OpenRC en vez de apt/systemd.
 
 resource "proxmox_virtual_environment_container" "dns_sync" {
   node_name    = "main"
   vm_id        = 113
   unprivileged = true
-  description  = "Mantiene los registros DNS de mis dominios con la IP publica dinamica. Gestionado por Terraform + Ansible."
+  description  = "Sincroniza el registro A de example.org/titopinardogutierrez.com/example.net con la IP WAN dinamica cada 5 min (cron). Sustituye al CT 105 'Scripts' (el resto de su contenido estaba sin usar). Gestionado por Terraform + Ansible, ver ~/infra-tf."
 
   initialization {
     hostname = "dns-sync"
@@ -16,7 +25,7 @@ resource "proxmox_virtual_environment_container" "dns_sync" {
 
     ip_config {
       ipv4 {
-        address = "192.0.2.28/24"
+        address = "192.0.2.249/24"
         gateway = "192.0.2.1"
       }
     }
@@ -44,8 +53,14 @@ resource "proxmox_virtual_environment_container" "dns_sync" {
   }
 
   started = true
+
+  lifecycle {
+    # RAM en caliente (docs/despliegue.md): el proveedor reinicia el CT al
+    # cambiarla; se cambia con pct set / la web y aqui queda como registro.
+    ignore_changes = [memory]
+  }
 }
 
 output "dns_sync_ip" {
-  value = "192.0.2.28"
+  value = "192.0.2.249"
 }

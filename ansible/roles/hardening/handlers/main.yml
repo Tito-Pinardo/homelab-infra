@@ -1,8 +1,13 @@
 ---
 - name: recargar sshd
-  # restarted y no reloaded: en Debian 13 ssh.service se activa por socket y un
-  # reload hace que sshd intente volver a enlazar un puerto que ya tiene el
-  # socket, con lo que el servicio muere.
+  # "restarted", NO "reloaded": en Debian 13 (trixie) ssh.service esta
+  # activado por socket (ssh.socket) - un reload manda SIGHUP al sshd vivo,
+  # que intenta re-exec y re-bindear el puerto que el socket YA tiene
+  # tomado -> "fatal: Cannot bind any address", el servicio muere y deja
+  # de escuchar. Incidente real 2026-09-16: 5 CT se quedaron sin SSH por
+  # red durante unos minutos (recuperado via pct exec, sin daño real, pero
+  # nunca mas "reloaded" aqui). Las sesiones ya autenticadas no se cortan
+  # con restart (sshd-session corre separado del listener principal).
   ansible.builtin.systemd:
     name: ssh
     state: restarted

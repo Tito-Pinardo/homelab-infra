@@ -1,0 +1,14 @@
+# Generado por Ansible (role pbs) - no editar a mano.
+# policy_in DROP: guarda las copias de todo el homelab.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+
+[RULES]
+{% for source in pbs_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+{% for source in pbs_origenes_api -%}
+IN ACCEPT -source {{ source }} -p tcp -dport {{ pbs_puerto }}
+{% endfor -%}
+IN ACCEPT -p icmp

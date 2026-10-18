@@ -1,0 +1,116 @@
+# CI de infra-tf en Forgejo (runner del CT 127, modo host). Ver docs/forgejo.md.
+#
+# Solo comprueba: no tiene secretos ni acceso al homelab, nada de aqui aplica
+# cambios. Los avisos del resultado llegan a Element (sala CI/CD) por el
+# webhook del repo, no desde aqui.
+#
+# Trabajos separados para que un fallo no esconda los demas. Cada uno
+# hace su propia copia del repo (sin actions/checkout: el runner no tiene
+# Node y no hace falta para un git fetch).
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    runs-on: infra-tf
+    steps:
+      - name: Copia del repo
+        run: |
+          git init -q .
+          git -c http.extraHeader="Authorization: token ${{ github.token }}" \
+            fetch -q --no-tags "${{ github.server_url }}/${{ github.repository }}.git" "+${{ github.ref }}:refs/ci/actual"
+          git checkout -q -f "${{ github.sha }}"
+          git clean -qffdx
+      - name: Formato (terraform fmt)
+        run: terraform fmt -check -recursive -diff environments
+      - name: Validar cada entorno (sin backend ni credenciales)
+        run: |
+          for d in environments/*/; do
+            echo "== $d"
+            terraform -chdir="$d" init -backend=false -input=false -no-color > /dev/null
+            terraform -chdir="$d" validate -no-color
+          done
+
+  ansible:
+    runs-on: infra-tf
+    steps:
+      - name: Copia del repo
+        run: |
+          git init -q .
+          git -c http.extraHeader="Authorization: token ${{ github.token }}" \
+            fetch -q --no-tags "${{ github.server_url }}/${{ github.repository }}.git" "+${{ github.ref }}:refs/ci/actual"
+          git checkout -q -f "${{ github.sha }}"
+          git clean -qffdx
+      - name: Colecciones
+        run: ansible-galaxy collection install -r ansible/requirements.yml > /dev/null
+      # Solo fallan los avisos nuevos: los que habia el 14-10 estan en
+      # ansible/.ansible-lint-ignore.
+      - name: ansible-lint
+        run: cd ansible && ansible-lint --nocolor
+
+  secretos:
+    runs-on: infra-tf
+    steps:
+      - name: Copia del repo (historial completo)
+        run: |
+          git init -q .
+          git -c http.extraHeader="Authorization: token ${{ github.token }}" \
+            fetch -q --no-tags "${{ github.server_url }}/${{ github.repository }}.git" "+${{ github.ref }}:refs/ci/actual"
+          git checkout -q -f "${{ github.sha }}"
+          git clean -qffdx
+      - name: Vaults cifrados
+        run: ./scripts/ci/comprobar-vaults.sh
+      # Todo el historial, no solo el ultimo commit: un secreto borrado en un
+      # commit posterior sigue estando en el repo.
+      - name: gitleaks
+        run: gitleaks git --redact --no-banner --exit-code 1 .
+
+  # Analisis de seguridad (docs/forgejo.md): tflint con las reglas
+  # recomendadas y Trivy (errores de configuracion en Terraform y
+  # Dockerfiles, dependencias vulnerables). Bloquea con HIGH o CRITICAL; lo
+  # aceptado va en .trivyignore con su motivo. Los secretos, gitleaks.
+  seguridad:
+    runs-on: infra-tf
+    steps:
+      - name: Copia del repo
+        run: |
+          git init -q .
+          git -c http.extraHeader="Authorization: token ${{ github.token }}" \
+            fetch -q --no-tags "${{ github.server_url }}/${{ github.repository }}.git" "+${{ github.ref }}:refs/ci/actual"
+          git checkout -q -f "${{ github.sha }}"
+          git clean -qffdx
+      - name: tflint
+        run: |
+          for d in environments/*/; do
+            echo "== $d"
+            tflint --chdir="$d" --format compact
+          done
+      - name: Trivy (configuracion y dependencias)
+        run: |
+          ignorar=""
+          [ -f .trivyignore ] && ignorar="--ignorefile .trivyignore"
+          trivy fs --scanners misconfig,vuln --severity HIGH,CRITICAL --exit-code 1 \
+            --no-progress $ignorar .
+
+  # La copia publica de este commit (docs/publico.md): si el control de fugas
+  # la bloquearia, se ve aqui, antes de fusionar. Sin la contrasena del vault
+  # los .example salen de los vars.yml: da igual para el control.
+  copia-publica:
+    runs-on: infra-tf
+    steps:
+      - name: Copia del repo
+        run: |
+          git init -q .
+          git -c http.extraHeader="Authorization: token ${{ github.token }}" \
+            fetch -q --no-tags "${{ github.server_url }}/${{ github.repository }}.git" "+${{ github.ref }}:refs/ci/actual"
+          git checkout -q -f "${{ github.sha }}"
+          git clean -qffdx
+      - name: Generar la copia y pasar el control de fugas
+        run: |
+          destino="$(mktemp -d)"
+          trap 'rm -rf "$destino"' EXIT
+          python3 scripts/publico/generar.py HEAD "$destino/copia"
+          python3 scripts/publico/comprobar.py "$destino/copia"

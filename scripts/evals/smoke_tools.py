@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
-"""Comprueba que las herramientas de lectura de Hermes responden de verdad.
+"""Comprueba que las tools de LECTURA de Hermes responden de verdad.
 
-Se ejecuta en el CT del asistente, donde estan el codigo y las credenciales.
-Nunca crea, edita ni borra nada. La bateria del modelo no detecta una
-herramienta caida porque trabaja con resultados sinteticos.
+Se ejecuta EN el CT del asistente (192.0.2.247), donde estan el codigo y
+las credenciales. Nunca crea, edita ni borra nada: no toca calendario,
+Matrix ni documentos pendientes.
+
+Por que existe: el 2026-09-22 las dos tools de Demeter llevaban 13 horas
+devolviendo "no disponible" sin que nadie lo notara. La bateria del modelo
+no lo ve (solo mira que tool ELIGE, con resultados sinteticos) y los tests
+deterministas tampoco (no salen a la red). Esto si.
+
+    ssh root@192.0.2.247 'python3 - ' < scripts/evals/smoke_tools.py
+
+Sale con codigo 1 si alguna tool falla o devuelve un error, para poder
+encadenarlo tras un despliegue.
 """
 import json
 import os
@@ -13,8 +23,9 @@ from pathlib import Path
 
 UNIT = Path('/etc/systemd/system/ia-bot.service')
 
-# Herramientas de lectura con argumentos representativos. Las de escritura no
-# se prueban aqui a proposito.
+# Tools de lectura y unos argumentos representativos. Las de escritura
+# (crear/editar/borrar evento, indexar/descartar documento) no se prueban
+# aqui a proposito.
 CASOS = [
     ('get_server_health', {}),
     ('get_ct_info', {'nombre': 'plex'}),
@@ -37,17 +48,15 @@ CASOS = [
 
 
 def cargar_entorno():
-    """Carga las variables de entorno del servicio del bot."""
     ...
 
 
 def problema(salida: str) -> str | None:
-    """Indica si el resultado de una herramienta es un fallo."""
+    """Un resultado vacio o con 'error' es un fallo aunque no lance."""
     ...
 
 
 def main() -> int:
-    """Punto de entrada: ejecuta cada herramienta una vez y comprueba que responde."""
     ...
 
 

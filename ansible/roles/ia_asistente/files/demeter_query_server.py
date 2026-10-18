@@ -12,7 +12,6 @@ from demeter_queries import query
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
-        """Atiende una consulta por el socket local."""
         ...
 
 
@@ -26,9 +25,11 @@ if __name__=='__main__':
     os.umask(0o117)
     with Server(path,Handler) as server:
         server.database=os.environ.get('DEMETER_DB','/var/lib/demeter/queue.sqlite')
-        # Comprobacion al arrancar: si el modulo de consultas no casa con la base,
-        # lo registro en el journal. No aborta: el socket sigue respondiendo con un
-        # error controlado.
+        # Comprobacion al arrancar: si el modulo de consultas no case con la
+        # base (codigo a medio actualizar, esquema cambiado), se ve en el
+        # journal ahora y no dentro de meses cuando alguien pregunte por sus
+        # gastos. No aborta: el socket sigue sirviendo y respondiendo el error
+        # controlado, que es mejor que no arrancar.
         try:
             db=sqlite3.connect(Path(server.database).resolve().as_uri()+'?mode=ro',uri=True)
             try:query(db,{'action':'summary'})

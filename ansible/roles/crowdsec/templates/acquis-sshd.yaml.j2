@@ -1,0 +1,6 @@
+# Gestionado por Ansible (rol crowdsec). SSH del propio CT (solo LAN y VPN).
+source: journalctl
+journalctl_filter:
+  - "_SYSTEMD_UNIT=ssh.service"
+labels:
+  type: syslog

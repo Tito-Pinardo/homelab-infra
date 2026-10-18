@@ -1,0 +1,30 @@
+# Deriva de Terraform cada noche (runner "despliegue" del CT 123). Ver
+# docs/despliegue.md.
+#
+# Plan contra lo ULTIMO DESPLEGADO: si sale algo, es que se cambio algo fuera
+# del repo (a mano en Proxmox, por ejemplo). Tambien avisa si master tiene
+# commits sin desplegar. No cambia nada, y si todo cuadra no avisa.
+name: Deriva
+
+on:
+  schedule:
+    # 05:15 UTC (07:15 en Madrid en horario de verano), despues de las copias.
+    - cron: "15 5 * * *"
+  workflow_dispatch:
+
+env:
+  PY: /home/agent/.local/share/pipx/venvs/ansible-core/bin/python
+  ARBOL: /home/agent/.infra-tf/arbol
+
+jobs:
+  deriva:
+    runs-on: despliegue
+    steps:
+      - name: Checkout del despliegue
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          # El script se carga de master; luego el mismo se pone en lo desplegado.
+          git -C "$ARBOL" checkout -q -f --detach origin/master
+      - name: Deriva y pendientes
+        run: '"$PY" "$ARBOL/scripts/despliegue/despliegue.py" deriva'

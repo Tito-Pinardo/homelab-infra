@@ -1,0 +1,31 @@
+# Generado por Ansible (role forgejo_runner) - no editar a mano.
+log:
+  level: info
+
+runner:
+  file: /var/lib/forgejo-runner/.runner
+  # Un trabajo a la vez: el CT es pequeño. El CI de infra-tf tarda poco; el
+  # de la web compila Rust (la primera vez, sin caché, unos minutos).
+  capacity: 1
+  timeout: 60m
+  envs:
+    PATH: /var/lib/forgejo-runner/.cargo/bin:/opt/ci-venv/bin:/usr/local/bin:/usr/bin:/bin
+    LC_ALL: C.UTF-8
+    # Providers de Terraform descargados una vez y reutilizados.
+    TF_PLUGIN_CACHE_DIR: /var/lib/forgejo-runner/.terraform.d/plugin-cache
+    # Web (Rust): compilaciones reutilizadas entre ejecuciones y PostgreSQL
+    # local, solo por socket, para las pruebas (#[sqlx::test] crea una base
+    # por prueba).
+    CARGO_TARGET_DIR: {{ ci_cargo_target_dir }}
+    CARGO_BUILD_JOBS: "{{ ci_cargo_jobs }}"
+    DATABASE_URL: "postgres://runner@%2Fvar%2Frun%2Fpostgresql/runner"
+  labels:
+{% for label in forgejo_runner_labels %}
+    - "{{ label }}:host"
+{% endfor %}
+
+cache:
+  enabled: false
+
+host:
+  workdir_parent: /var/lib/forgejo-runner/trabajos

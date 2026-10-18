@@ -1,0 +1,68 @@
+---
+# CT 123: Forgejo es el origen de infra-tf. El checkout de agent empuja alli
+# y el repo central de antes queda como copia de solo lectura (rechaza pushes
+# con un mensaje que explica el cambio y se pone al dia cada 5 minutos).
+#   - include_role: { name: forgejo, tasks_from: central }
+# Se ejecuta como el usuario agent. El respaldo de dns-sync no cambia: lo
+# sigue empujando el post-commit de cada checkout.
+
+# La clave publica se lee del propio CT (no de un keyscan por la red, que se
+# fiaria de lo primero que conteste). El SSH de Forgejo solo tiene clave RSA.
+- name: Clave de host del SSH de Forgejo
+  ansible.builtin.slurp:
+    src: /var/lib/forgejo/data/ssh/gitea.rsa.pub
+  register: forgejo_central_hostkey
+  delegate_to: forgejo
+  vars:
+    ansible_connection: ssh
+
+- name: Conocer el SSH de Forgejo (copia del central y checkout)
+  ansible.builtin.known_hosts:
+    path: "{{ item }}"
+    name: "[{{ hostvars['forgejo'].ansible_host }}]:{{ hostvars['forgejo'].forgejo_ssh_port }}"
+    key: >-
+      [{{ hostvars['forgejo'].ansible_host }}]:{{ hostvars['forgejo'].forgejo_ssh_port }}
+      {{ (forgejo_central_hostkey.content | b64decode).split()[:2] | join(' ') }}
+  loop:
+    - "{{ forgejo_mirror_known_hosts }}"
+    - /home/agent/.ssh/known_hosts
+
+# ---------------------------------------------------------------- checkout
+
+- name: Forgejo como origin del checkout de infra-tf
+  community.general.git_config:
+    name: remote.origin.url
+    value: "{{ forgejo_repo_url }}"
+    scope: local
+    repo: /home/agent/infra-tf
+
+# ---------------------------------------------------------------- central
+
+- name: Remoto forgejo del repo central
+  community.general.git_config:
+    name: remote.forgejo.url
+    value: "{{ forgejo_repo_url }}"
+    scope: local
+    repo: "{{ forgejo_central_repo }}"
+
+- name: Quitar el hook que copiaba el central a Forgejo (ahora es al reves)
+  ansible.builtin.file:
+    path: "{{ forgejo_central_repo }}/hooks/post-receive"
+    state: absent
+
+- name: Rechazar pushes al central
+  ansible.builtin.template:
+    src: pre-receive.j2
+    dest: "{{ forgejo_central_repo }}/hooks/pre-receive"
+    mode: "0755"
+
+# fetch no pasa por pre-receive. --prune: si se borra una rama en Forgejo,
+# tambien desaparece aqui.
+- name: Copia del central desde Forgejo cada 5 minutos
+  ansible.builtin.cron:
+    name: "infra-tf: central desde Forgejo"
+    minute: "*/5"
+    job: >-
+      cd {{ forgejo_central_repo }} && GIT_SSH_COMMAND="{{ forgejo_mirror_ssh }}"
+      git fetch -q --prune forgejo '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+      > {{ forgejo_mirror_log }} 2>&1 || echo "FALLO $(date -Is)" >> {{ forgejo_mirror_log }}

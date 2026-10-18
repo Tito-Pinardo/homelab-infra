@@ -1,0 +1,50 @@
+---
+# Resumen semanal de los lunes del blog de la web (tools/digest/digest.py).
+- name: Carpetas del resumen semanal
+  ansible.builtin.file:
+    path: "/home/{{ agents_user }}/{{ item }}"
+    state: directory
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0700"
+  loop:
+    - .config/landing-digest
+    - .local/state/landing-digest
+    - .local/share/landing-digest
+
+- name: Clon propio del repo de la web para el resumen
+  ansible.builtin.git:
+    repo: "{{ agents_digest_repo }}"
+    dest: "/home/{{ agents_user }}/.local/share/landing-digest/repo"
+    version: main
+    accept_hostkey: true
+    update: false
+  become: true
+  become_user: "{{ agents_user }}"
+
+- name: Entorno del resumen (bot de Matrix de la web)
+  vars:
+    landing_host: "{{ groups['landing'][0] }}"
+  ansible.builtin.template:
+    src: landing-digest.env.j2
+    dest: "/home/{{ agents_user }}/.config/landing-digest/digest.env"
+    owner: "{{ agents_user }}"
+    group: "{{ agents_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Unidades systemd del resumen
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - landing-digest.service
+    - landing-digest.timer
+
+- name: Activar el temporizador del resumen
+  ansible.builtin.systemd:
+    name: landing-digest.timer
+    enabled: true
+    state: started
+    daemon_reload: true

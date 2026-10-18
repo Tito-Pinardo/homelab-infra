@@ -1,20 +1,24 @@
 ---
-# CT de control con agentes de IA y Codeman como panel. Ver lxc-agents.tf y
-# group_vars/agents/vars.yml. La autorizacion de su clave SSH en el resto de
-# la flota va aparte (playbooks/agents-access.yml) para poder revisarla y
-# revocarla sin tocar este rol.
+# CT 123 "agents": CT de control + agentes IA con Codeman como panel.
+# Ver lxc-agents.tf para el porque y group_vars/agents/vars.yml para
+# versiones. La autorizacion de su clave SSH en el resto de la flota va
+# APARTE (playbooks/agents-access.yml) para que sea facil de revisar y de
+# revocar sin tocar este role.
 
 # ── Firewall Proxmox del CT (en el host, no dentro del CT) ──────────────
-# Un .fw solo con [RULES] no se aplica: hace falta [OPTIONS] con enable: 1.
+# enable: 1 + policy_in DROP explicitos: un .fw solo con [RULES] NO se
+# aplica (comprobado 2026-09-22 - el DROP del CT 115 no bloqueaba nada).
 #
-# /etc/pve es pmxcfs: ni template/copy ni unsafe_writes funcionan. Lo
-# renderizo fuera y lo vuelco con 'cat >'.
+# /etc/pve es pmxcfs: ni template/copy (chmod, rename atomico) ni
+# unsafe_writes funcionan (Operation not permitted, probado 2026-09-22).
+# Se renderiza fuera y se vuelca con 'cat >', igual que
+# register_monitoring.py.
 - name: Renderizar el firewall Proxmox del CT fuera de /etc/pve
   ansible.builtin.template:
     src: agents.fw.j2
     dest: "/root/pve-fw-staging-{{ proxmox_vmid }}.fw"
     mode: "0600"
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   remote_user: root
   become: false
 
@@ -25,7 +29,7 @@
       || { cat /root/pve-fw-staging-{{ proxmox_vmid }}.fw > /etc/pve/firewall/{{ proxmox_vmid }}.fw && echo CHANGED; }
   register: agents_fw_write
   changed_when: "'CHANGED' in agents_fw_write.stdout"
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   remote_user: root
   become: false
 
@@ -86,8 +90,9 @@
   loop: "{{ agents_npm_packages }}"
   loop_control:
     label: "{{ item.name }}@{{ item.version }}"
-  # Sin esta variable, el postinstall de aicodeman arranca un servidor Codeman
-  # como root fuera de systemd.
+  # El postinstall de aicodeman ARRANCA un servidor Codeman como root en
+  # :3000 (detached, fuera de systemd) salvo esta variable - visto en real
+  # 2026-09-22.
   environment:
     CODEMAN_NO_AUTOSTART: "1"
   notify: reiniciar codeman
@@ -129,15 +134,16 @@
     ssh_key_type: ed25519
     ssh_key_comment: "agent@agents (CT {{ proxmox_vmid }})"
 
-# Alias de la ruta de mi otro equipo: las sesiones de agentes migradas desde
-# alli guardan rutas absolutas y asi siguen resolviendo al reanudarlas.
-- name: Alias /home/usuario -> /home/{{ agents_user }} (sesiones migradas del PC)
+# Alias de la ruta vieja: las sesiones de Codex/Claude migradas desde el PC
+# lucifer (2026-09-22) guardan rutas absolutas /home/lucifer/... (infra-tf,
+# auditoria-casa, .codex/sessions) - asi siguen resolviendo al reanudarlas.
+- name: Alias /home/lucifer -> /home/{{ agents_user }} (sesiones migradas de lucifer)
   ansible.builtin.file:
     src: "/home/{{ agents_user }}"
-    dest: /home/usuario
+    dest: /home/lucifer
     state: link
 
-# Mismas claves de administracion que root, para 'ssh agent@agents'.
+# Mismas claves admin (Mac + lucifer) que root, para 'ssh agent@agents'.
 - name: Autorizar las claves admin tambien para '{{ agents_user }}'
   ansible.builtin.copy:
     src: /root/.ssh/authorized_keys
@@ -147,8 +153,8 @@
     group: "{{ agents_user }}"
     mode: "0600"
 
-# Hereda la confianza de host keys del nodo de control, en vez de aceptar
-# claves a ciegas la primera vez.
+# Hereda la confianza de host keys que ya tiene el nodo de control
+# (lucifer), en vez de aceptar claves a ciegas la primera vez.
 - name: Copiar las host keys conocidas del homelab
   ansible.builtin.copy:
     src: "{{ lookup('env', 'HOME') }}/.ssh/known_hosts"
@@ -157,13 +163,13 @@
     group: "{{ agents_user }}"
     mode: "0644"
 
-- name: Anadir la host key del PC (repo git) a las conocidas
+- name: Anadir la host key de lucifer (repo git) a las conocidas
   ansible.builtin.known_hosts:
-    # En su propio known_hosts: la copia de arriba lo sobrescribiria en cada
-    # pasada.
+    # En su propio known_hosts, no en el _homelab (la copia de arriba lo
+    # sobreescribiria en cada pasada).
     path: "/home/{{ agents_user }}/.ssh/known_hosts"
-    name: 192.0.2.13
-    key: "192.0.2.13 {{ lookup('file', '/etc/ssh/ssh_host_ed25519_key.pub') }}"
+    name: 192.0.2.30
+    key: "192.0.2.30 {{ lookup('file', '/etc/ssh/ssh_host_ed25519_key.pub') }}"
 
 - name: known_hosts propio del usuario (known_hosts lo crea como root)
   ansible.builtin.file:
@@ -180,14 +186,11 @@
     group: "{{ agents_user }}"
     mode: "0600"
 
-- name: Copiar la contrasena del vault de infra-tf
-  ansible.builtin.copy:
-    src: "{{ lookup('env', 'HOME') }}/.vault-pass-infra-tf"
-    dest: "/home/{{ agents_user }}/.vault-pass-infra-tf"
-    owner: "{{ agents_user }}"
-    group: "{{ agents_user }}"
-    mode: "0600"
-  no_log: true
+# Ya no hay contraseña del vault (secretos en OpenBao, docs/secretos.md).
+- name: Quitar la contrasena del vault de infra-tf
+  ansible.builtin.file:
+    path: "/home/{{ agents_user }}/.vault-pass-infra-tf"
+    state: absent
 
 - name: Identidad git de los agentes
   community.general.git_config:
@@ -196,18 +199,42 @@
     scope: global
   loop:
     - { name: user.name, value: "Agentes IA (CT {{ proxmox_vmid }})" }
-    - { name: user.email, value: "agent@agents.home.example" }
+    - { name: user.email, value: "agent@agents.home.arpa" }
   become: true
   become_user: "{{ agents_user }}"
 
 # ── Ansible para el usuario 'agent' ──────────────────────────────────────
-- name: Instalar ansible-core {{ agents_ansible_core_version }} con pipx
+# state: present no actualiza si ya hay otra version instalada (con
+# Renovate subiendo la version, el CT se quedaba en la vieja): se mira la
+# instalada y se reinstala solo si no coincide.
+- name: Version de ansible-core instalada
+  ansible.builtin.command:
+    argv: [pipx, runpip, ansible-core, show, ansible-core]
+  become: true
+  become_user: "{{ agents_user }}"
+  register: agents_ansible_instalado
+  changed_when: false
+  failed_when: false
+
+- name: Instalar ansible-core {{ agents_ansible_core_version }} con pipx (primera vez)
   community.general.pipx:
     name: ansible-core
     source: "ansible-core=={{ agents_ansible_core_version }}"
     state: present
   become: true
   become_user: "{{ agents_user }}"
+
+# Dentro del mismo venv: un 'pipx install --force' lo rehace de cero y pierde
+# lo inyectado (paramiko, abajo).
+- name: Llevar ansible-core a {{ agents_ansible_core_version }} si es otra version
+  ansible.builtin.command:
+    argv: [pipx, runpip, ansible-core, install, "ansible-core=={{ agents_ansible_core_version }}"]
+  become: true
+  become_user: "{{ agents_user }}"
+  when:
+    - agents_ansible_instalado.rc == 0
+    - "('Version: ' ~ agents_ansible_core_version) not in agents_ansible_instalado.stdout"
+  changed_when: true
 
 # paramiko: lo necesita community.proxmox.proxmox_pct_remote (paperless).
 - name: Inyectar dependencias de las colecciones en el venv de ansible
@@ -226,7 +253,7 @@
   become: true
   become_user: "{{ agents_user }}"
 
-# ── Agente local (OpenCode -> modelo de chat de mi PC) ──────────────────
+# ── Agente local (OpenCode -> Ollama de lucifer) ─────────────────────────
 - name: Crear directorio de config de OpenCode
   ansible.builtin.file:
     path: "/home/{{ agents_user }}/.config/opencode"
@@ -235,7 +262,7 @@
     group: "{{ agents_user }}"
     mode: "0755"
 
-- name: Configurar OpenCode con el Ollama del PC
+- name: Configurar OpenCode con el Ollama de lucifer
   ansible.builtin.template:
     src: opencode.json.j2
     dest: "/home/{{ agents_user }}/.config/opencode/opencode.json"
@@ -243,7 +270,7 @@
     group: "{{ agents_user }}"
     mode: "0644"
 
-# ── Retirada de Vibe Kanban (sustituido por Codeman) ────────────────────
+# ── Retirada de Vibe Kanban (2026-09-22, sustituido por Codeman) ─────────
 # Idempotente: en un CT recreado desde cero no encuentra nada y no hace nada.
 - name: Comprobar si queda el servicio de Vibe Kanban
   ansible.builtin.stat:
@@ -304,3 +331,7 @@
     enabled: true
     state: started
     daemon_reload: true
+
+- name: Resumen semanal de los lunes del blog
+  ansible.builtin.include_tasks: digest.yml
+  when: agents_digest_enabled | bool

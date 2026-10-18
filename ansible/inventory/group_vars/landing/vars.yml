@@ -1,0 +1,28 @@
+# CT 125 "landing" - titopinardogutierrez.com. Ver lxc-landing.tf y docs/landing.md.
+landing_port: 8080
+landing_user: landing
+landing_dir: /opt/landing
+
+# Binario ya compilado (cargo build --release en el repo de la web). Se copia
+# tal cual: el CT no necesita compilador ni Rust.
+# El que compila el despliegue continuo (landing-desplegar, desde main de
+# Forgejo): relanzar el playbook a mano o desde el despliegue de infra-tf
+# vuelve a poner lo ultimo desplegado, no lo que haya en un checkout de trabajo.
+landing_binary_src: "/home/agent/.landing-cd/target/release/landing"
+
+# Traefik (CT 209) es lo unico que llega al puerto de la web; detras esta
+# Cloudflare, por eso el binario se fia de CF-Connecting-IP.
+landing_traefik_ip: "192.0.2.6"
+
+landing_ssh_allowed_sources: []  # se define en el inventario privado
+
+landing_public_url: "https://titopinardogutierrez.com"
+landing_github_user: "Tito-Pinardo"
+
+# Secretos (vault.yml): sal del hash de IP y, cuando existan, Matrix y Turnstile.
+landing_ip_hash_salt: "{{ vault_landing_ip_hash_salt }}"
+landing_matrix_homeserver: "{{ vault_landing_matrix_homeserver | default('') }}"
+landing_matrix_access_token: "{{ vault_landing_matrix_access_token | default('') }}"
+landing_matrix_room_id: "{{ vault_landing_matrix_room_id | default('') }}"
+landing_turnstile_site_key: "{{ vault_landing_turnstile_site_key | default('') }}"
+landing_turnstile_secret: "{{ vault_landing_turnstile_secret | default('') }}"

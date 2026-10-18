@@ -8,5 +8,4 @@ import tempfile
 
 
 def documents(raw):
-    """Extrae los documentos adjuntos de un correo."""
     ...

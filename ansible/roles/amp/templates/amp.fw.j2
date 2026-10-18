@@ -1,2 +1,5 @@
-# Firewall de Proxmox del CT de AMP: SSH solo desde amp_ssh_allowed_sources.
-# El contenido real de las reglas no se publica.
+[RULES]
+{% for source in amp_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+IN DROP -p tcp -dport 22 -log nolog # solo PC admin + Mac via WireGuard

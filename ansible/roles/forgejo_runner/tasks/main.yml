@@ -1,0 +1,336 @@
+---
+# Runner del CI de Forgejo en el CT 127 (ver docs/forgejo.md). Modo host:
+# los trabajos corren como el usuario 'runner' en este CT, que no guarda
+# nada sensible. Necesita forgejo_runner_secret del play de Forgejo.
+
+# Firewall propio del CT, con policy_in DROP (ver la plantilla).
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    forgejo_runner_fw_content: "{{ lookup('template', 'forgejo-runner.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: forgejo_runner_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+- name: Escribir el firewall propio del CT
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ forgejo_runner_fw_content }}"
+    stdin_add_newline: false
+  # Solo corre cuando el contenido es distinto (ver el when).
+  changed_when: true
+  when: >
+    not forgejo_runner_fw_current.content is defined or
+    (forgejo_runner_fw_current.content | default('') | b64decode) != forgejo_runner_fw_content
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# ---------------------------------------------------------------- sistema
+
+- name: Paquetes
+  ansible.builtin.apt:
+    # python3-packaging: lo pide el modulo pip de Ansible.
+    name: [git, python3-venv, python3-packaging, unzip, ca-certificates, curl]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# El runner entra en https://git.home.arpa, que firma la CA interna de Caddy.
+- name: Leer la CA interna del Caddy de dockge
+  ansible.builtin.slurp:
+    src: "{{ forgejo_runner_caddy_ca }}"
+  register: forgejo_runner_ca
+  delegate_to: dockge
+
+- name: Confiar en la CA interna de Caddy
+  ansible.builtin.copy:
+    content: "{{ forgejo_runner_ca.content | b64decode }}"
+    dest: /usr/local/share/ca-certificates/caddy-home-lan.crt
+    mode: "0644"
+
+# Tarea y no handler: si el play fallaba despues de copiar la CA, el handler
+# no llegaba a correr y en la siguiente pasada ya no habia cambio que lo
+# disparara (pasó en la primera instalación, 14-10).
+- name: Actualizar el almacen de CAs
+  ansible.builtin.command: update-ca-certificates
+  register: forgejo_runner_update_ca
+  changed_when: forgejo_runner_update_ca.stdout is not search('^0 added', multiline=True)
+
+- name: Usuario de sistema runner
+  ansible.builtin.user:
+    name: runner
+    system: true
+    shell: /bin/bash
+    home: /var/lib/forgejo-runner
+    create_home: true
+
+- name: Directorios
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: runner
+    mode: "0750"
+  loop:
+    - { path: /etc/forgejo-runner, owner: root }
+    - { path: /var/lib/forgejo-runner/trabajos, owner: runner }
+    - { path: /var/lib/forgejo-runner/.terraform.d/plugin-cache, owner: runner }
+
+# ansible.cfg ya no pide contraseña de vault (secretos en OpenBao,
+# docs/secretos.md): fuera la falsa que necesitaba el CI.
+- name: Quitar la contraseña de vault falsa del CI
+  ansible.builtin.file:
+    path: /var/lib/forgejo-runner/.vault-pass-infra-tf
+    state: absent
+
+# providers.tf lee la clave SSH del usuario con file() y terraform validate
+# tambien lo evalua. Igual que el vault: fichero FALSO, no da acceso a nada.
+- name: Directorio .ssh del runner
+  ansible.builtin.file:
+    path: /var/lib/forgejo-runner/.ssh
+    state: directory
+    owner: runner
+    group: runner
+    mode: "0700"
+
+- name: Clave SSH falsa para terraform validate
+  ansible.builtin.copy:
+    content: "clave falsa del CI: terraform validate solo comprueba que el fichero existe\n"
+    dest: /var/lib/forgejo-runner/.ssh/id_ed25519
+    owner: runner
+    group: runner
+    mode: "0600"
+
+# ---------------------------------------------------------------- herramientas
+
+# Cada version en su directorio y un enlace en /usr/local/bin: cambiar la
+# version en group_vars instala la nueva sin pisar la anterior.
+- name: Directorios de las herramientas
+  ansible.builtin.file:
+    path: "/opt/ci-tools/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "terraform-{{ ci_terraform_version }}"
+    - "gitleaks-{{ ci_gitleaks_version }}"
+    - "trivy-{{ ci_trivy_version }}"
+    - "tflint-{{ ci_tflint_version }}"
+
+- name: Descargar Terraform, gitleaks, Trivy y tflint (sumas fijadas en group_vars)
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "/var/cache/{{ item.url | basename }}"
+    checksum: "sha256:{{ item.sha256 }}"
+    mode: "0644"
+  loop:
+    - url: "https://releases.hashicorp.com/terraform/{{ ci_terraform_version }}/terraform_{{ ci_terraform_version }}_linux_amd64.zip"
+      sha256: "{{ ci_terraform_sha256 }}"
+    - url: "https://github.com/gitleaks/gitleaks/releases/download/v{{ ci_gitleaks_version }}/gitleaks_{{ ci_gitleaks_version }}_linux_x64.tar.gz"
+      sha256: "{{ ci_gitleaks_sha256 }}"
+    - url: "https://github.com/aquasecurity/trivy/releases/download/v{{ ci_trivy_version }}/trivy_{{ ci_trivy_version }}_Linux-64bit.tar.gz"
+      sha256: "{{ ci_trivy_sha256 }}"
+    - url: "https://github.com/terraform-linters/tflint/releases/download/v{{ ci_tflint_version }}/tflint_linux_amd64.zip"
+      sha256: "{{ ci_tflint_sha256 }}"
+
+- name: Desempaquetar las herramientas
+  ansible.builtin.unarchive:
+    src: "/var/cache/{{ item.archive }}"
+    dest: "/opt/ci-tools/{{ item.name }}-{{ item.version }}"
+    include: ["{{ item.name }}"]
+    remote_src: true
+    creates: "/opt/ci-tools/{{ item.name }}-{{ item.version }}/{{ item.name }}"
+  loop:
+    - { name: terraform, version: "{{ ci_terraform_version }}", archive: "terraform_{{ ci_terraform_version }}_linux_amd64.zip" }
+    - { name: gitleaks, version: "{{ ci_gitleaks_version }}", archive: "gitleaks_{{ ci_gitleaks_version }}_linux_x64.tar.gz" }
+    - { name: trivy, version: "{{ ci_trivy_version }}", archive: "trivy_{{ ci_trivy_version }}_Linux-64bit.tar.gz" }
+    - { name: tflint, version: "{{ ci_tflint_version }}", archive: "tflint_linux_amd64.zip" }
+
+- name: Enlazar las versiones en uso
+  ansible.builtin.file:
+    src: "/opt/ci-tools/{{ item.name }}-{{ item.version }}/{{ item.name }}"
+    dest: "/usr/local/bin/{{ item.name }}"
+    state: link
+    force: true
+  loop:
+    - { name: terraform, version: "{{ ci_terraform_version }}" }
+    - { name: gitleaks, version: "{{ ci_gitleaks_version }}" }
+    - { name: trivy, version: "{{ ci_trivy_version }}" }
+    - { name: tflint, version: "{{ ci_tflint_version }}" }
+
+- name: Entorno de Python con ansible-core y ansible-lint (versiones fijadas)
+  ansible.builtin.pip:
+    name:
+      - "ansible-core=={{ ci_ansible_core_version }}"
+      - "ansible-lint=={{ ci_ansible_lint_version }}"
+    virtualenv: /opt/ci-venv
+    virtualenv_command: python3 -m venv
+
+# ---------------------------------------------------------------- web (Rust)
+
+# CI de la web personal (repo landing, etiqueta "landing"): Rust, PostgreSQL
+# para las pruebas y Node para comprobar el JS minificado. Ver docs/landing.md.
+- name: Paquetes para compilar y probar la web
+  ansible.builtin.apt:
+    # python3-psycopg2: lo piden los modulos de community.postgresql.
+    name: [build-essential, postgresql, nodejs, python3-psycopg2]
+    state: present
+
+# Solo socket: en este CT no hay nada que deba hablar con PostgreSQL por red.
+- name: PostgreSQL sin red
+  ansible.builtin.copy:
+    content: |
+      # Generado por Ansible (role forgejo_runner): solo socket local.
+      listen_addresses = ''
+    dest: /etc/postgresql/17/main/conf.d/ci.conf
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  register: forgejo_runner_pg_conf
+
+- name: Arrancar PostgreSQL
+  ansible.builtin.systemd:
+    name: postgresql
+    state: "{{ 'restarted' if forgejo_runner_pg_conf.changed else 'started' }}"
+    enabled: true
+
+# Peer por el socket: el usuario runner entra como el rol runner sin
+# contraseña. CREATEDB porque #[sqlx::test] crea una base por prueba; no es
+# superusuario.
+- name: Rol de PostgreSQL del CI
+  community.postgresql.postgresql_user:
+    name: runner
+    role_attr_flags: NOSUPERUSER,CREATEDB,NOCREATEROLE,LOGIN
+  become: true
+  become_user: postgres
+  # La plantilla de Debian no trae sudo; root pasa a postgres con su.
+  become_method: ansible.builtin.su
+
+- name: Base de datos del CI
+  community.postgresql.postgresql_db:
+    name: runner
+    owner: runner
+    encoding: UTF-8
+    template: template0
+  become: true
+  become_user: postgres
+  become_method: ansible.builtin.su
+
+- name: Descargar rustup-init (suma fijada en group_vars)
+  ansible.builtin.get_url:
+    url: "https://static.rust-lang.org/rustup/archive/{{ ci_rustup_version }}/x86_64-unknown-linux-gnu/rustup-init"
+    dest: "/var/cache/rustup-init-{{ ci_rustup_version }}"
+    checksum: "sha256:{{ ci_rustup_sha256 }}"
+    mode: "0755"
+
+# Toolchain fijada (la misma que el CT 123, que compila lo que se despliega).
+# Cambiar ci_rust_version instala la nueva al lado y la deja por defecto.
+- name: Toolchain de Rust del usuario runner
+  ansible.builtin.command:
+    argv:
+      - "/var/cache/rustup-init-{{ ci_rustup_version }}"
+      - -y
+      - --no-modify-path
+      - --profile
+      - minimal
+      - --default-toolchain
+      - "{{ ci_rust_version }}"
+      - --component
+      - clippy,rustfmt
+    creates: "/var/lib/forgejo-runner/.rustup/toolchains/{{ ci_rust_version }}-x86_64-unknown-linux-gnu"
+  become: true
+  become_user: runner
+  become_method: ansible.builtin.su
+  environment:
+    HOME: /var/lib/forgejo-runner
+
+- name: Toolchain por defecto
+  ansible.builtin.command:
+    argv: [/var/lib/forgejo-runner/.cargo/bin/rustup, default, "{{ ci_rust_version }}"]
+  become: true
+  become_user: runner
+  become_method: ansible.builtin.su
+  environment:
+    HOME: /var/lib/forgejo-runner
+  register: forgejo_runner_rust_default
+  changed_when: "'unchanged' not in forgejo_runner_rust_default.stdout + forgejo_runner_rust_default.stderr"
+
+- name: Directorio de compilaciones de la web (se reutiliza entre ejecuciones)
+  ansible.builtin.file:
+    path: "{{ ci_cargo_target_dir }}"
+    state: directory
+    owner: runner
+    group: runner
+    mode: "0750"
+
+# ---------------------------------------------------------------- runner
+
+- name: Descargar el runner (suma fijada en group_vars)
+  ansible.builtin.get_url:
+    url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}/forgejo-runner-{{ forgejo_runner_version }}-linux-amd64"
+    dest: "/usr/local/bin/forgejo-runner-{{ forgejo_runner_version }}"
+    checksum: "sha256:{{ forgejo_runner_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enlazar la version en uso
+  ansible.builtin.file:
+    src: "/usr/local/bin/forgejo-runner-{{ forgejo_runner_version }}"
+    dest: /usr/local/bin/forgejo-runner
+    state: link
+  notify: Reiniciar forgejo-runner
+
+- name: Configuracion
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/forgejo-runner/config.yml
+    owner: root
+    group: runner
+    mode: "0640"
+  notify: Reiniciar forgejo-runner
+
+# Mismo secreto que registro el play de Forgejo: el fichero .runner es lo
+# unico que identifica al runner ante el servidor.
+- name: Fichero de registro del runner
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo-runner
+      - create-runner-file
+      - --instance
+      - "https://{{ hostvars['forgejo'].forgejo_domain }}"
+      - --secret
+      - "{{ hostvars['forgejo'].forgejo_runner_secret }}"
+      - --name
+      - forgejo-runner
+    chdir: /var/lib/forgejo-runner
+    creates: /var/lib/forgejo-runner/.runner
+  become: true
+  become_user: runner
+  become_method: ansible.builtin.su
+  notify: Reiniciar forgejo-runner
+  no_log: true
+
+- name: Unidad de systemd
+  ansible.builtin.template:
+    src: forgejo-runner.service.j2
+    dest: /etc/systemd/system/forgejo-runner.service
+    mode: "0644"
+  notify: Reiniciar forgejo-runner
+
+- name: Arrancar el runner
+  ansible.builtin.systemd:
+    name: forgejo-runner
+    state: started
+    enabled: true
+    daemon_reload: true

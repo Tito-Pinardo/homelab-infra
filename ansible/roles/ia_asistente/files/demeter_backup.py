@@ -11,17 +11,14 @@ import tempfile
 
 
 def verify(path):
-    """Comprueba que una copia de la base de datos se puede restaurar."""
     ...
 
 
 def backup(database, directory, keep=14):
-    """Hace una copia de la base de datos y conserva solo las mas recientes."""
     ...
 
 
 def main():
-    """Punto de entrada de la copia de seguridad de Demeter."""
     ...
 
 

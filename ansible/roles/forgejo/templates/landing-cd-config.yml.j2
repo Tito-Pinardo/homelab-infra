@@ -1,0 +1,24 @@
+# Generado por Ansible (role forgejo, tasks/landing_cd_root.yml) - no editar a mano.
+# Runner que despliega la web personal (CT 123, usuario agent): solo para el
+# repo landing y solo el trabajo "desplegar", despues del CI. Ver
+# docs/landing.md.
+log:
+  level: info
+
+runner:
+  file: /home/agent/.landing-cd/runner/.runner
+  capacity: 1
+  # Compilar en release y lanzar el playbook.
+  timeout: 1h
+  envs:
+    PATH: /home/agent/.local/bin:/home/agent/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+    LC_ALL: C.UTF-8
+    HOME: /home/agent
+  labels:
+    - "landing-despliegue:host"
+
+cache:
+  enabled: false
+
+host:
+  workdir_parent: /home/agent/.landing-cd/trabajos

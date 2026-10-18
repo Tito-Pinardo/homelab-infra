@@ -1,14 +1,20 @@
-# Generado por Ansible (roles/battlepros_status): no editar a mano, se sobrescribe.
+# Generado por Ansible (roles/battlepros_status) - no editar a mano, se sobreescribe.
 services:
   battlepros-status:
-    image: ghcr.io/usuario/battlepros-status:latest
+    image: ghcr.io/tito-pinardo/battlepros-status:latest
     container_name: battlepros-status
     env_file: stack.env
     volumes:
       - /opt/stacks/battlepros-status/data:/app/data
       - /opt/stacks/battlepros-status/src:/app/src
+      # Web publica y panel: versionados en infra-tf (files/web), no en la imagen.
+      - /opt/stacks/battlepros-status/web:/app/web:ro
     ports:
+      # 3010: web publica (Traefik -> www.example.net). 3011: panel de
+      # gestion, solo en 127.0.0.1 para que unicamente llegue Caddy con
+      # Authelia (battlepros.home.arpa) - 2026-10-09.
       - 3010:3000
+      - 127.0.0.1:3011:3001
     restart: unless-stopped
     healthcheck:
       test:

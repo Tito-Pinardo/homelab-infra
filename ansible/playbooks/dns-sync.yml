@@ -10,3 +10,9 @@
   become: true
   roles:
     - git_backup
+
+- name: Publicar servidores de AMP (router + Cloudflare), ver docs/amp-publicar.md
+  hosts: dns_sync
+  become: true
+  roles:
+    - amp_publicar

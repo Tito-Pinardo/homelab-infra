@@ -1,0 +1,14 @@
+# Generado por Ansible (role landing) - no editar a mano.
+# A diferencia del resto de CT, policy_in DROP: es el unico que se publica en
+# internet, asi que solo entra lo que se lista aqui. Zabbix y Wazuh son
+# activos (el agente conecta hacia fuera), no necesitan regla de entrada.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+
+[RULES]
+{% for source in landing_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+IN ACCEPT -source {{ landing_traefik_ip }} -p tcp -dport {{ landing_port }} # la web solo desde Traefik
+IN ACCEPT -p icmp

@@ -1,12 +1,15 @@
-# Version fijada a proposito: solo cambia cuando subo el numero.
-homepage_version: "v2.3.0"
+# Version fijada a proposito (igual que element_web_version) - un bump
+# manual, nunca una actualizacion sola en un re-run.
+# renovate: datasource=docker depName=ghcr.io/gethomepage/homepage
+homepage_version: "v2.5.0"
 
-# La version de Next.js de Homepage exige Node >= 22.
+# Next.js 16 (el que usa esta version de Homepage) exige Node >= 22 - ver
+# nota en roles/homepage/tasks/main.yml.
 nodejs_major_version: "22"
 
-homepage_title: "Homelab"
+homepage_title: "Luciel · Homelab"
 
-# Presentacion del panel; rutas y destinos estan en all/services.yml.
+# Presentación del dashboard; rutas y destinos siguen en all/services.yml.
 homepage_category_order:
   - Infraestructura
   - Documentos y wiki
@@ -15,6 +18,7 @@ homepage_category_order:
   - Automatizacion e IA
   - Comunicacion
   - Juegos
+  - BattlePros
   - Webs personales
 homepage_category_icons:
   Infraestructura: mdi-server-network
@@ -24,11 +28,25 @@ homepage_category_icons:
   Automatizacion e IA: mdi-robot-outline
   Comunicacion: mdi-message-outline
   Juegos: mdi-gamepad-variant-outline
+  BattlePros: mdi-sword-cross
   Webs personales: mdi-web
-# Homepage no necesita enlazarse a si mismo.
+# Threadfin está retirado según el runbook de migración del CT122.
+# Homepage no necesita enlazarse a sí mismo.
 homepage_hidden_services:
   - Threadfin
+  # Solo redirige a www.example.net, no es un servicio aparte.
+  - battlepros-club
+  - www-titopinardogutierrez-com
 homepage_service_details:
+  titopinardogutierrez-com:
+    name: titopinardogutierrez.com
+    description: Mi web personal (CT 125)
+  www-battlepros-club:
+    name: www.example.net
+    description: Web pública · servidores, Discord y normas
+  Panel del bot:
+    name: battlepros.home.arpa
+    description: Gestionar servidores y canales del bot
   amp-example-org:
     name: AMP
     description: Consolas y servidores de juegos
@@ -62,6 +80,9 @@ homepage_service_details:
   Tautulli:
     name: Tautulli
     description: Actividad y reproducciones de Plex
+  Dispatcharr:
+    name: Dispatcharr
+    description: Canales de TV en directo (IPTV) y guía
   Auth (Authelia):
     name: Authelia
     description: Acceso y autenticación

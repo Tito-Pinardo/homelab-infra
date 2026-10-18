@@ -1,9 +1,12 @@
-# Version del driver NVIDIA fijada a la misma que el modulo del kernel del
-# host Proxmox: un desajuste rompe NVENC sin avisar.
+# CT 117 - version del driver NVIDIA fijada a la misma que corre el modulo
+# del kernel del host Proxmox (comprobar con "pct exec 100 -- dpkg -l |
+# grep nvidia-driver" si el host alguna vez actualiza el driver - un
+# desajuste aqui rompe NVENC en silencio, visto en real 2026-09-16).
 plex_nvidia_driver_version: "580.173.02-1"
 
-# No reenvio a Wazuh el journal de Plex: el DVR genera tanto log que llena el
-# buffer del agente y se pierden eventos importantes. Plex guarda sus logs en
-# disco.
+# Wazuh: no reenviar el journal de Plex. Cada manana el comskip del DVR
+# escribe ~100k lineas en ~15 min, llena el buffer del agente ("Agent event
+# queue is full", regla 203) y se pierden eventos que si importan (visto
+# 2026-09-20..24, 07:00-08:15). Plex guarda sus propios logs en disco.
 wazuh_journald_ignore_units:
   - plexmediaserver.service

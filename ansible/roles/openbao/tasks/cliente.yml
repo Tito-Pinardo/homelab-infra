@@ -1,0 +1,68 @@
+---
+# CT 123 como agent: cliente de OpenBao (ver docs/openbao.md).
+#   - include_role: { name: openbao, tasks_from: cliente }
+#
+# Instala infra-tf-secreto (lectura con el AppRole del CT 123), tf y
+# openbao-vigilar. Los secretos de Ansible y las llaves de Terraform se leen
+# de OpenBao (docs/secretos.md).
+
+- name: Directorios
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - /home/agent/.infra-tf/openbao
+    - "/home/agent/.local/share/openbao-{{ hostvars['openbao'].openbao_version }}"
+
+- name: Certificado de OpenBao (fijado tal cual)
+  ansible.builtin.copy:
+    content: "{{ hostvars['openbao'].openbao_cert.content | b64decode }}"
+    dest: /home/agent/.infra-tf/openbao/ca.pem
+    mode: "0644"
+
+- name: Descargar el cliente bao (suma fijada en group_vars/openbao)
+  vars:
+    version: "{{ hostvars['openbao'].openbao_version }}"
+  ansible.builtin.get_url:
+    url: "https://github.com/openbao/openbao/releases/download/v{{ version }}/openbao_{{ version }}_linux_amd64.tar.gz"
+    dest: "/home/agent/.local/share/openbao-{{ version }}/openbao.tar.gz"
+    checksum: "sha256:{{ hostvars['openbao'].openbao_targz_sha256 }}"
+    mode: "0600"
+
+- name: Desempaquetar bao
+  ansible.builtin.unarchive:
+    src: "/home/agent/.local/share/openbao-{{ hostvars['openbao'].openbao_version }}/openbao.tar.gz"
+    dest: "/home/agent/.local/share/openbao-{{ hostvars['openbao'].openbao_version }}"
+    include: [bao]
+    remote_src: true
+    creates: "/home/agent/.local/share/openbao-{{ hostvars['openbao'].openbao_version }}/bao"
+
+- name: Enlazar bao
+  ansible.builtin.file:
+    src: "/home/agent/.local/share/openbao-{{ hostvars['openbao'].openbao_version }}/bao"
+    dest: /home/agent/.local/bin/bao
+    state: link
+    force: true
+
+- name: Scripts del cliente
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/home/agent/.local/bin/{{ item }}"
+    mode: "0755"
+  loop: [infra-tf-secreto, tf, openbao-vigilar]
+
+- name: Vigilar si OpenBao esta sellado (cada 10 minutos)
+  ansible.builtin.cron:
+    name: "openbao: avisar si esta sellado"
+    minute: "*/10"
+    job: /home/agent/.local/bin/openbao-vigilar >> /home/agent/.cache/openbao-vigilar.log 2>&1
+
+# ------------------------------------------------- sin contraseña del vault
+# Desde el 18-10 no queda ningun vault.yml (docs/secretos.md): Ansible ya no
+# la pide. Se queda guardada en OpenBao (infra-tf/ansible) para leer los
+# vault.yml de la historia de git: infra-tf-secreto ansible vault_password.
+- name: Quitar ~/.vault-pass-infra-tf
+  ansible.builtin.file:
+    path: /home/agent/.vault-pass-infra-tf
+    state: absent

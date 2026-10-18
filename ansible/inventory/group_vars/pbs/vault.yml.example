@@ -1,0 +1,5 @@
+# Secretos del grupo: en OpenBao (infra-tf/grupos/pbs), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

@@ -1,0 +1,79 @@
+; Generado por Ansible (role forgejo) - no editar a mano.
+; Los secretos no estan aqui: Forgejo los lee de ficheros de /etc/forgejo
+; que el role crea una sola vez en el propio CT (no pasan por el repo).
+APP_NAME = Forgejo de casa
+RUN_USER = git
+RUN_MODE = prod
+WORK_PATH = /var/lib/forgejo
+
+[server]
+PROTOCOL = http
+HTTP_ADDR = 0.0.0.0
+HTTP_PORT = {{ forgejo_http_port }}
+DOMAIN = {{ forgejo_domain }}
+ROOT_URL = https://{{ forgejo_domain }}/
+LOCAL_ROOT_URL = http://127.0.0.1:{{ forgejo_http_port }}/
+; git.home.arpa apunta a Caddy (dockge), que solo sirve HTTPS: para SSH las
+; URLs de clonado llevan la IP del CT.
+START_SSH_SERVER = true
+SSH_DOMAIN = {{ ansible_host }}
+SSH_PORT = {{ forgejo_ssh_port }}
+SSH_LISTEN_PORT = {{ forgejo_ssh_port }}
+OFFLINE_MODE = true
+LFS_START_SERVER = false
+
+[database]
+DB_TYPE = sqlite3
+PATH = /var/lib/forgejo/data/forgejo.db
+SQLITE_JOURNAL_MODE = WAL
+
+[security]
+INSTALL_LOCK = true
+SECRET_KEY_URI = file:/etc/forgejo/secret_key
+INTERNAL_TOKEN_URI = file:/etc/forgejo/internal_token
+; La IP real del cliente solo se acepta si la pasa el Caddy de dockge.
+REVERSE_PROXY_TRUSTED_PROXIES = {{ forgejo_proxy_ip }}
+REVERSE_PROXY_LIMIT = 1
+
+[oauth2]
+ENABLED = false
+; Forgejo lo pide aunque OAuth2 este apagado (firma otros tokens internos).
+JWT_SECRET_URI = file:/etc/forgejo/jwt_secret
+
+; Inicio de sesion con Authelia (OIDC, docs/sso.md): entrar como "tito" en
+; Authelia vincula sola la cuenta "tito" (mismo nombre). La fuente exige el
+; grupo admins: nadie mas puede entrar ni crear cuenta por aqui.
+[oauth2_client]
+ENABLE_AUTO_REGISTRATION = true
+ACCOUNT_LINKING = auto
+USERNAME = preferred_username
+OPENID_CONNECT_SCOPES = openid email profile groups
+
+[service]
+DISABLE_REGISTRATION = true
+REQUIRE_SIGNIN_VIEW = true
+DEFAULT_KEEP_EMAIL_PRIVATE = true
+
+[repository]
+DEFAULT_PRIVATE = private
+DEFAULT_BRANCH = master
+
+[actions]
+ENABLED = true
+
+[session]
+COOKIE_SECURE = true
+
+[webhook]
+; Solo el receptor de avisos del CI (ci-avisos, en este mismo CT).
+ALLOWED_HOST_LIST = loopback
+
+[mailer]
+ENABLED = false
+
+[cron.update_checker]
+ENABLED = false
+
+[log]
+MODE = console
+LEVEL = Info

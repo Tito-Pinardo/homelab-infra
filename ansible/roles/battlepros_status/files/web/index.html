@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BattlePros · Comunidad gamer y servidores de juegos</title>
+  <meta name="description" content="BattlePros es una comunidad gamer en español con servidores propios de Minecraft, Hytale y más. Mira qué está encendido ahora y entra al Discord." />
+  <meta name="theme-color" content="#0b0d17" />
+  <link rel="canonical" href="https://www.example.net/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.example.net/" />
+  <meta property="og:title" content="BattlePros · Comunidad gamer" />
+  <meta property="og:description" content="Servidores propios, gente con ganas de jugar y un Discord siempre activo." />
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="/public.css" />
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg-orb bg-orb-a"></div>
+    <div class="bg-orb bg-orb-b"></div>
+    <div class="bg-grid"></div>
+  </div>
+
+  <header class="topbar">
+    <a class="brand" href="#inicio" aria-label="BattlePros, inicio">
+      <img src="/img/logo.svg" alt="" width="36" height="36" />
+      <span>Battle<b>Pros</b></span>
+    </a>
+    <nav class="topnav" aria-label="Secciones">
+      <a href="#servidores">Servidores</a>
+      <a href="#comunidad">Comunidad</a>
+      <a href="#normas">Normas</a>
+    </nav>
+    <a class="btn btn-discord btn-sm" href="https://discord.gg/Kh4T8Feq8C" target="_blank" rel="noreferrer">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-discord" /></svg>
+      <span>Unirse</span>
+    </a>
+  </header>
+
+  <main>
+    <!-- PORTADA -->
+    <section id="inicio" class="hero">
+      <p class="eyebrow"><span class="live-dot"></span> Comunidad gamer en español</p>
+      <h1>Encuentra partida.<br /><span class="grad">Quédate por la gente.</span></h1>
+      <p class="lead">
+        Servidores propios de Minecraft, Hytale y lo que vaya pidiendo la comunidad,
+        y un Discord donde siempre hay alguien con ganas de jugar.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-discord btn-lg" href="https://discord.gg/Kh4T8Feq8C" target="_blank" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-discord" /></svg>
+          Entrar al Discord
+        </a>
+        <a class="btn btn-ghost btn-lg" href="#servidores">Ver servidores</a>
+      </div>
+
+      <dl class="hero-stats">
+        <div class="hstat">
+          <dt>En Discord ahora</dt>
+          <dd><span id="stat-discord" class="num">–</span></dd>
+        </div>
+        <div class="hstat">
+          <dt>Servidores encendidos</dt>
+          <dd><span id="stat-online" class="num">–</span><small id="stat-total"></small></dd>
+        </div>
+        <div class="hstat">
+          <dt>Jugando ahora</dt>
+          <dd><span id="stat-players" class="num">–</span></dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- SERVIDORES -->
+    <section id="servidores" class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker">En directo</p>
+          <h2>Servidores</h2>
+          <p class="muted">Se actualiza solo cada 30 segundos. Copia la dirección y entra.</p>
+        </div>
+        <div id="filters" class="chips" role="tablist" aria-label="Filtrar por juego"></div>
+      </div>
+      <div id="server-sections" class="server-sections" aria-live="polite">
+        <div class="server-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
+      <p id="servers-updated" class="muted small center"></p>
+    </section>
+
+    <!-- COMUNIDAD -->
+    <section id="comunidad" class="section">
+      <div class="community">
+        <div class="community-copy">
+          <p class="kicker">Discord</p>
+          <h2 id="discord-name">BattlePros</h2>
+          <p class="muted">
+            Allí se organizan las partidas, se piden servidores nuevos y se avisa cuando algo
+            se enciende. El bot de BattlePros publica el estado de cada servidor en su canal.
+          </p>
+          <ul class="perks">
+            <li><span>🎮</span> Grupos para jugar a cualquier hora</li>
+            <li><span>📡</span> Estado de los servidores en directo</li>
+            <li><span>🗳️</span> La comunidad decide qué juego viene después</li>
+          </ul>
+          <a class="btn btn-discord btn-lg" href="https://discord.gg/Kh4T8Feq8C" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-discord" /></svg>
+            Unirme ahora
+          </a>
+        </div>
+        <div class="discord-card">
+          <div class="discord-card-head">
+            <img src="/img/logo.svg" alt="" width="44" height="44" />
+            <div>
+              <p class="dc-title" id="discord-name-card">BattlePros</p>
+              <p class="dc-sub"><span class="live-dot"></span> <span id="discord-count">–</span> conectados</p>
+            </div>
+          </div>
+          <ul id="discord-members" class="members">
+            <li class="muted small">Cargando quién está conectado…</li>
+          </ul>
+          <a class="btn btn-discord btn-block" href="https://discord.gg/Kh4T8Feq8C" target="_blank" rel="noreferrer">Abrir en Discord</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- NORMAS -->
+    <section id="normas" class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker" data-es="Convivencia" data-en="Community">Convivencia</p>
+          <h2 data-es="Normas de la comunidad" data-en="Community rules">Normas de la comunidad</h2>
+          <p class="muted" data-es="Pocas y claras, para que todo el mundo se lo pase bien." data-en="Few and clear, so everyone has a good time.">Pocas y claras, para que todo el mundo se lo pase bien.</p>
+        </div>
+        <div class="lang" role="group" aria-label="Idioma">
+          <button type="button" data-lang="es" aria-pressed="true">ES</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+      </div>
+
+      <ol class="rules">
+        <li class="rule">
+          <span class="rule-n">01</span>
+          <h3 data-es="Cada mensaje en su canal" data-en="Every message in its channel">Cada mensaje en su canal</h3>
+          <p data-es="Si no está en el sitio adecuado, un moderador puede borrarlo sin avisar." data-en="If it's in the wrong place, a moderator may remove it without notice.">Si no está en el sitio adecuado, un moderador puede borrarlo sin avisar.</p>
+        </li>
+        <li class="rule">
+          <span class="rule-n">02</span>
+          <h3 data-es="Nada de spam" data-en="No spam">Nada de spam</h3>
+          <p data-es="Ni mensajes repetidos ni publicidad: para eso ya hay un canal." data-en="No repeated messages or ads: there's a channel for that.">Ni mensajes repetidos ni publicidad: para eso ya hay un canal.</p>
+        </li>
+        <li class="rule">
+          <span class="rule-n">03</span>
+          <h3 data-es="Respeto a todo el mundo" data-en="Respect everyone">Respeto a todo el mundo</h3>
+          <p data-es="Cero discriminación: ni racismo, ni sexismo, ni nada parecido." data-en="Zero discrimination: no racism, sexism or anything like it.">Cero discriminación: ni racismo, ni sexismo, ni nada parecido.</p>
+        </li>
+        <li class="rule">
+          <span class="rule-n">04</span>
+          <h3 data-es="Sin contenido ofensivo o explícito" data-en="No offensive or explicit content">Sin contenido ofensivo o explícito</h3>
+          <p data-es="Prohibido publicar enlaces o imágenes de carácter sexual." data-en="No sexually explicit links or images.">Prohibido publicar enlaces o imágenes de carácter sexual.</p>
+        </li>
+        <li class="rule">
+          <span class="rule-n">05</span>
+          <h3 data-es="No te hagas pasar por moderador" data-en="Don't impersonate moderators">No te hagas pasar por moderador</h3>
+          <p data-es="Supone el baneo directo del servidor." data-en="It means a straight server ban.">Supone el baneo directo del servidor.</p>
+        </li>
+      </ol>
+
+      <div class="sanctions">
+        <p class="sanctions-title" data-es="Si se incumplen, de menos a más:" data-en="If broken, from mild to severe:">Si se incumplen, de menos a más:</p>
+        <ol class="ladder">
+          <li data-es="Borrar mensaje" data-en="Message removed">Borrar mensaje</li>
+          <li data-es="Silencio temporal" data-en="Temporary mute">Silencio temporal</li>
+          <li data-es="Expulsión" data-en="Kick">Expulsión</li>
+          <li data-es="Baneo permanente" data-en="Permanent ban">Baneo permanente</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="brand brand-sm">
+      <img src="/img/logo.svg" alt="" width="24" height="24" />
+      <span>Battle<b>Pros</b></span>
+    </div>
+    <p class="muted small">Donde los gamers se conectan · © <span id="year">2026</span></p>
+    <nav class="footnav">
+      <a href="#servidores">Servidores</a>
+      <a href="#normas">Normas</a>
+      <a href="https://discord.gg/Kh4T8Feq8C" target="_blank" rel="noreferrer">Discord</a>
+    </nav>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-discord" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M20.32 4.37A19.8 19.8 0 0 0 15.4 2.85a.07.07 0 0 0-.08.04c-.21.38-.45.87-.61 1.25a18.3 18.3 0 0 0-5.48 0 12.6 12.6 0 0 0-.62-1.25.08.08 0 0 0-.08-.04 19.7 19.7 0 0 0-4.88 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.06 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.1 13.1 13.1 0 0 1-1.87-.9.08.08 0 0 1-.01-.12l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.8 8.18 1.8 12.07 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.65-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.22 1.99a.08.08 0 0 0 .08.03 19.8 19.8 0 0 0 6-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z" />
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 9h10v10H9zM5 15V5h10" />
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </symbol>
+  </svg>
+
+  <script src="/public.js" type="module"></script>
+</body>
+</html>

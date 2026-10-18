@@ -1,0 +1,10 @@
+# Generado por Ansible (role pbs, playbooks/pbs.yml) - no editar a mano.
+[Unit]
+Description=Copia a PBS de datasets ZFS fuera de los CT (docs/copias.md)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/copia-datasets
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,30 @@
+---
+# CT 123 como root (via 'pct exec' en el host, como despliegue_root.yml):
+# configuracion y servicio del runner que despliega la web personal. Usa el
+# mismo binario del runner que instala despliegue_root.yml. Se arranca en
+# playbooks/forgejo.yml despues de crear su fichero de registro.
+#   - include_role: { name: forgejo, tasks_from: landing_cd_root }
+
+- name: Directorio de configuracion del runner de la web
+  ansible.builtin.file:
+    path: /etc/forgejo-runner-landing
+    state: directory
+    owner: root
+    group: agent
+    mode: "0750"
+
+- name: Configuracion del runner de la web
+  ansible.builtin.template:
+    src: landing-cd-config.yml.j2
+    dest: /etc/forgejo-runner-landing/config.yml
+    owner: root
+    group: agent
+    mode: "0640"
+  notify: Reiniciar el runner de la web
+
+- name: Unidad de systemd del runner de la web
+  ansible.builtin.template:
+    src: forgejo-runner-landing.service.j2
+    dest: /etc/systemd/system/forgejo-runner-landing.service
+    mode: "0644"
+  notify: Reiniciar el runner de la web

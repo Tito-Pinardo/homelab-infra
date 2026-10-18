@@ -1,6 +1,12 @@
-# Generado por Ansible (roles/arr_stack): no editar a mano, se sobrescribe.
+# Generado por Ansible (roles/arr_stack) - no editar a mano, se sobreescribe.
 {
+{% if caddy_ca_casa %}
+    # Certificados de la CA de casa (OpenBao) por ACME: docs/ca-casa.md.
+    acme_ca {{ ca_casa_acme }}
+    acme_ca_root {{ ca_casa_acme_raiz_caddy }}
+{% else %}
     local_certs
+{% endif %}
 }
 
 (protected) {
@@ -14,73 +20,105 @@
 import /config/demeter/*.caddy
 
 # ── AUTH PORTAL ────────────────────────────────────────────
-auth.home.example {
+auth.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     reverse_proxy localhost:9091
 }
 
 # ── *ARR STACK (protegidos con Authelia) ───────────────────
-radarr.home.example {
+radarr.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:7878
 }
 
-sonarr.home.example {
+sonarr.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:8989
 }
 
-prowlarr.home.example {
+prowlarr.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy 127.0.0.1:9696
 }
 
-bazarr.home.example {
+bazarr.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:6767
 }
 
-profilarr.home.example {
+profilarr.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:6868
 }
 
-jackett.home.example {
+jackett.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy 127.0.0.1:9117
 }
 
-tautulli.home.example {
+tautulli.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:8181
 }
 
 # Homepage: ya no se publica en internet.
-homepage.home.example {
+homepage.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
-    reverse_proxy 192.0.2.29:3000
+    reverse_proxy 192.0.2.250:3000
 }
 
-n8n.home.example {
+n8n.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
-    reverse_proxy 192.0.2.30:5678
+    reverse_proxy 192.0.2.251:5678
+}
+
+# Panel de gestion del bot battlepros-status: ya no esta en internet, solo
+# el puerto interno (127.0.0.1:3011). www.example.net es solo la web.
+battlepros.home.arpa {
+{% if not caddy_ca_casa %}
+    tls internal
+{% endif %}
+    import protected
+    reverse_proxy localhost:3011
 }
 
 # Dashboard de Traefik: ya no se publica en internet. Caddy le pasa el nombre
 # que espera su router y valida su certificado de Let's Encrypt.
-traefik.home.example {
+traefik.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
-    reverse_proxy https://192.0.2.12:443 {
+    reverse_proxy https://192.0.2.6:443 {
         header_up Host {{ traefik_dashboard_host_prod }}
         transport http {
             tls_server_name {{ traefik_dashboard_host_prod }}
@@ -89,54 +127,68 @@ traefik.home.example {
 }
 
 # ── DOWNLOAD CLIENTS (Authelia 2FA) ───
-qbit.home.example {
+qbit.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:8080
 }
 
-qui.home.example {
+qui.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy localhost:7477
 }
 
 # ── GESTIÓN (sin Authelia, tiene login propio) ─────────────
-dockge.home.example {
+dockge.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     import protected
     reverse_proxy 127.0.0.1:5001
 }
 
 # ── OBSIDIAN WIKI ──────────────────────────────────────────
-obsidian.home.example {
+obsidian.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     reverse_proxy localhost:3006
 }
 
 # ── LIBROS (con Authelia) ──────────────────────────────────
-books.home.example {
+books.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     reverse_proxy localhost:8083
 }
 
 # ── LAZYLIBRARIAN ─────────────────────────────────────────
-lazylibrarian.home.example {
+lazylibrarian.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     reverse_proxy localhost:5299
 }
 
 # Monitorizacion: solo LAN, Authelia 2FA y backend HTTPS verificado.
-zabbix.home.example {
+zabbix.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6 192.0.2.1
         import protected
-        reverse_proxy https://192.0.2.22:443 {
+        reverse_proxy https://192.0.2.240:443 {
             transport http {
-                tls_server_name zabbix.home.example
+                tls_server_name zabbix.home.arpa
                 tls_trust_pool file {
                     pem_file /config/monitoring-cas/zabbix-ca.pem
                 }
@@ -146,14 +198,16 @@ zabbix.home.example {
 }
 
 # Monitorizacion: solo LAN, Authelia 2FA y backend HTTPS verificado.
-wazuh.home.example {
+wazuh.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6 192.0.2.1
         import protected
-        reverse_proxy https://192.0.2.23:443 {
+        reverse_proxy https://192.0.2.241:443 {
             transport http {
                 tls_server_name 127.0.0.1
                 tls_trust_pool file {
@@ -165,16 +219,18 @@ wazuh.home.example {
 }
 
 # Documentos personales sensibles: solo LAN, Authelia 2FA (segunda capa sobre el MFA propio de Paperless) y backend HTTPS verificado.
-paperless.home.example {
+paperless.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6 192.0.2.1
         import protected
-        reverse_proxy https://192.0.2.25:8443 {
+        reverse_proxy https://192.0.2.245:8443 {
             transport http {
-                tls_server_name paperless.home.example
+                tls_server_name paperless.home.arpa
                 tls_trust_pool file {
                     pem_file /config/monitoring-cas/paperless-ca.pem
                 }
@@ -184,16 +240,18 @@ paperless.home.example {
 }
 
 # DNS local: Technitium con Authelia y TLS verificado.
-technitium.home.example {
+technitium.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6 192.0.2.1
         import protected
-        reverse_proxy https://192.0.2.15:53443 {
+        reverse_proxy https://192.0.2.45:53443 {
             transport http {
-                tls_server_name technitium.home.example
+                tls_server_name technitium.home.arpa
                 tls_trust_pool file {
                     pem_file /config/monitoring-cas/technitium-ca.pem
                 }
@@ -202,20 +260,91 @@ technitium.home.example {
     }
 }
 
-# Panel de agentes IA (Codeman): solo desde la red local y siempre detras de
-# Authelia. El firewall del CT solo acepta su puerto desde este Caddy.
-#
-# La contrasena de Codeman la pone Caddy tras pasar Authelia: Codeman limita
-# los fallos por IP y aqui todo llega desde la IP de Caddy.
-agents.home.example {
+# IPTV: web de Dispatcharr (CT 124). Solo LAN/WireGuard y Authelia 2FA
+# (segunda capa sobre su propio login). Las listas M3U/Xtream y los streams
+# NO pasan por aqui: Plex y las apps de la tele van directas a
+# 192.0.2.244:9191 (no se fian del certificado interno de Caddy).
+iptv.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6
         respond @entrada_publica "Solo red local" 403
         import protected
-        reverse_proxy 192.0.2.21:8765 {
+        reverse_proxy {{ hostvars['iptv'].ansible_host }}:{{ hostvars['iptv'].iptv_port }}
+    }
+}
+
+# Forgejo (CT 126): copia de infra-tf con CI. Solo LAN/WireGuard, nunca
+# desde Traefik, y Authelia 2FA delante de su propio login. El runner del CI
+# (CT 127) entra sin Authelia: no tiene navegador, y ante Forgejo se
+# identifica con su token. Git por SSH va directo al CT (puerto 2222).
+git.home.arpa {
+{% if not caddy_ca_casa %}
+    tls internal
+{% endif %}
+    route {
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip 192.0.2.6
+        respond @entrada_publica "Solo red local" 403
+        @runner remote_ip {{ hostvars['forgejo'].forgejo_runner_ip }}
+        reverse_proxy @runner {{ hostvars['forgejo'].ansible_host }}:{{ hostvars['forgejo'].forgejo_http_port }}
+        import protected
+        reverse_proxy {{ hostvars['forgejo'].ansible_host }}:{{ hostvars['forgejo'].forgejo_http_port }}
+    }
+}
+
+# OpenBao (CT 128): llaves maestras de infra-tf. Solo LAN/WireGuard y
+# Authelia 2FA delante de su propio login. Sirve sobre todo para desellarlo
+# tras un reinicio. Su certificado es propio y se fija aqui tal cual (lo copia
+# playbooks/openbao.yml a monitoring-cas/).
+bao.home.arpa {
+{% if not caddy_ca_casa %}
+    tls internal
+{% endif %}
+    route {
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip 192.0.2.6
+        respond @entrada_publica "Solo red local" 403
+        import protected
+        reverse_proxy https://{{ hostvars['openbao'].ansible_host }}:{{ hostvars['openbao'].openbao_puerto }} {
+            transport http {
+                tls_server_name {{ hostvars['openbao'].openbao_dominio }}
+                tls_trust_pool file {
+                    pem_file /config/monitoring-cas/openbao-ca.pem
+                }
+            }
+        }
+    }
+}
+
+# Panel de agentes IA (Codeman, CT 123). Con acceso
+# a todo el homelab: solo LAN/WireGuard, nunca desde Traefik (.6, la unica
+# entrada publica), y siempre detras de Authelia 2FA. El firewall del CT
+# solo acepta su puerto desde este Caddy.
+#
+# La contrasena de Codeman la pone Caddy (header_up) tras pasar Authelia:
+# Codeman limita 10 fallos/15 min POR IP y aqui todo llega desde la IP de
+# Caddy - sin esto el navegador (cada peticion sin credenciales = fallo)
+# bloqueaba el panel en segundos ("Too Many Requests", real 2026-09-22), y
+# el Basic Auth del navegador chocaria ademas con Authelia (tambien lee
+# Authorization). Codeman sigue exigiendola a cualquier otro origen.
+agents.home.arpa {
+{% if not caddy_ca_casa %}
+    tls internal
+{% endif %}
+    route {
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
+        respond @fuera "Solo red local" 403
+        @entrada_publica remote_ip 192.0.2.6
+        respond @entrada_publica "Solo red local" 403
+        import protected
+        reverse_proxy 192.0.2.237:8765 {
             header_up Authorization "Basic {{ ('admin:' ~ hostvars['agents'].agents_codeman_password) | b64encode }}"
         }
     }

@@ -1,0 +1,9 @@
+#!/bin/sh
+# tf: terraform con las credenciales sacadas de OpenBao (ya no hay
+# terraform.tfvars en disco). Uso igual que terraform: tf plan, tf apply...
+# Ver docs/openbao.md.
+set -e
+vars=$("$HOME/.local/bin/infra-tf-secreto" terraform --json)
+eval "$(printf '%s' "$vars" | python3 -c 'import json,sys,shlex
+for k,v in json.load(sys.stdin).items(): print("export TF_VAR_%s=%s" % (k, shlex.quote(v)))')"
+exec terraform "$@"

@@ -4,6 +4,8 @@ Description=Traefik is an open-source Edge Router that makes publishing your ser
 [Service]
 Type=notify
 EnvironmentFile=/etc/traefik/cloudflare.env
+# Los plugins locales se buscan en ./plugins-local.
+WorkingDirectory=/etc/traefik
 ExecStart=/usr/bin/traefik --configFile=/etc/traefik/traefik.yaml
 Restart=on-failure
 ExecReload=/bin/kill -USR1 $MAINPID

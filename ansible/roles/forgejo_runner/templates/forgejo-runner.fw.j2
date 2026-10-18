@@ -1,0 +1,12 @@
+# Generado por Ansible (role forgejo_runner) - no editar a mano.
+# El runner solo habla hacia fuera (Forgejo y descargas): de entrada, SSH de
+# administracion y nada mas.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+
+[RULES]
+{% for source in forgejo_runner_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+IN ACCEPT -p icmp

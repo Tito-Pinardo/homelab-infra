@@ -4,7 +4,7 @@ http:
     {{ route.name }}:
       rule: Host(`{{ route.host }}`)
       entryPoints: [websecure]
-      service: {{ route.name }}_svc
+      service: {{ 'noop@internal' if route.redirect_to is defined else route.name ~ '_svc' }}
       tls:
 {% if route.wildcard | default(false) %}
         domains:
@@ -12,10 +12,28 @@ http:
             sans:
               - "*.{{ route.apex }}"
 {% else %}
-        {# certResolver explicito: "{}" a secas solo reutiliza un certificado ya
-           existente por SNI, y un dominio sin wildcard nunca pediria el suyo. #}
+        {# certResolver explicito (no solo "{}"): sin esto, un dominio SIN
+           wildcard (ej. example.net, titopinardogutierrez.com) nunca
+           pide su propio certificado - "{}" a secas solo REUTILIZA un cert
+           ya existente por coincidencia de SNI, funciona para subdominios
+           de example.org porque el dashboard ya pidio el wildcard, pero
+           para un apex propio sin wildcard nadie lo pedia nunca. Bug real
+           encontrado 2026-09-16: example.net llevaba tiempo sin
+           certificado, Cloudflare no conseguia validar el origen. #}
         certResolver: letsencrypt
 {% endif %}
+{% if route.redirect_to is defined %}
+      middlewares: ['{{ route.name }}_redirect']
+
+{# Redireccion permanente conservando la ruta (ej. apex -> www). Sin
+   servicio propio: noop@internal nunca recibe trafico. #}
+  middlewares:
+    {{ route.name }}_redirect:
+      redirectRegex:
+        regex: "^https?://[^/]+/?(.*)"
+        replacement: "{{ route.redirect_to }}/${1}"
+        permanent: true
+{% else %}
 {% if route.middlewares is defined and route.middlewares | length > 0 %}
       middlewares: {{ route.middlewares }}
 {% endif %}
@@ -31,3 +49,4 @@ http:
 {% endif %}
         servers:
           - url: "{{ route.service_url }}"
+{% endif %}

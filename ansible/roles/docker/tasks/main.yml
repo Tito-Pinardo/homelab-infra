@@ -1,6 +1,7 @@
 ---
-# Instalacion de Docker CE, reutilizable como dependencia de cualquier rol
-# que necesite Docker.
+# Instalacion de Docker CE, reutilizable como dependencia de cualquier role
+# que necesite Docker (evita repetir estas mismas tareas en cada uno - ya
+# se hizo asi en paperless/amp antes de extraerlo, ver runbook).
 
 - name: Instalar dependencias basicas
   ansible.builtin.apt:

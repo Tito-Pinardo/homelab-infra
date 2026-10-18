@@ -1,6 +1,11 @@
 ---
-# Technitium DNS Server: binario + systemd, sin Docker. Este rol nunca toca
-# /etc/dns/*: es estado propio de Technitium, gestionado desde su web.
+# Technitium DNS Server - binario + systemd, sin Docker (mismo patron que
+# Traefik/Element). Este role NUNCA toca /etc/dns/* (dns.config, zones/,
+# auth.config, webservice.config, blocklists) - son estado binario propio
+# de Technitium, gestionado por su propia web UI/API, no por Ansible. La
+# PRIMERA carga de esos datos (restaurados desde el CT116 original) es un
+# paso manual aparte, documentado en el runbook - no forma parte de este
+# role a proposito (igual que Paperless con su BD).
 
 - name: Crear el grupo del servicio
   ansible.builtin.group:
@@ -172,16 +177,18 @@
     technitium_fw_content: "{{ lookup('template', 'technitium.fw.j2') }}"
 
 - name: Leer el firewall actual del CT en el host Proxmox (si existe)
-  # El .fw vive en el host Proxmox (pmxcfs): mismo patron que roles/paperless.
+  # /etc/pve/firewall/<vmid>.fw vive en pmxcfs (FUSE) en el HOST Proxmox, no
+  # dentro del contenedor - mismo patron que roles/paperless (shell+stdin,
+  # ni copy ni template funcionan sobre ese filesystem).
   ansible.builtin.slurp:
     src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
   register: technitium_fw_current
   failed_when: false
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
 
 - name: Escribir el firewall propio del CT (solo 3 reglas de SSH, sin tocar la politica por defecto)
   ansible.builtin.shell:
@@ -190,8 +197,8 @@
   when: >
     not technitium_fw_current.content is defined or
     (technitium_fw_current.content | default('') | b64decode) != technitium_fw_content
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2

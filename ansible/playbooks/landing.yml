@@ -1,0 +1,9 @@
+---
+# Web personal titopinardogutierrez.com en el CT 125 (ver docs/landing.md).
+#   cargo build --release   (en el repo de la web)
+#   ansible-playbook playbooks/landing.yml
+- name: Desplegar la web personal
+  hosts: landing
+  become: true
+  roles:
+    - landing

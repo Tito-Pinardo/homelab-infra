@@ -1,6 +1,8 @@
 ---
-# battlepros-status (bot de Discord). src/ y data/ se restauran aparte; este
-# rol nunca los toca.
+# battlepros-status (bot de Discord) - sustituye al stack manual en el
+# CT106 original. `src/` (codigo montado sobre la imagen base) y `web/` se
+# versionan aqui desde 2026-10-09 (files/src, files/web). `data/` (SQLite y
+# carátulas subidas) sigue sin gestionarse: nunca se toca ni se regenera.
 
 - name: Login en ghcr.io (imagen privada de battlepros-status)
   ansible.builtin.command: >
@@ -38,9 +40,30 @@
     - data
     - src
 
+- name: Desplegar el codigo del bot (files/src)
+  ansible.builtin.copy:
+    src: src/
+    dest: /opt/stacks/battlepros-status/src/
+    mode: "0644"
+  register: battlepros_src
+
+- name: Desplegar la web publica y el panel (files/web)
+  ansible.builtin.copy:
+    src: web/
+    dest: /opt/stacks/battlepros-status/web/
+    mode: "0644"
+    directory_mode: "0755"
+
 - name: Levantar el stack
   community.docker.docker_compose_v2:
     project_src: /opt/stacks/battlepros-status
     state: present
     pull: missing
     recreate: "{{ 'always' if battlepros_env.changed else 'auto' }}"
+  register: battlepros_stack
+
+# Node no recarga el codigo montado: si cambia src/ y el stack no se ha
+# recreado ya, reiniciar el contenedor.
+- name: Reiniciar el bot si ha cambiado el codigo
+  ansible.builtin.command: docker restart battlepros-status
+  when: battlepros_src.changed and not battlepros_stack.changed

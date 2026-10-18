@@ -1,5 +1,6 @@
-# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
-# y cifrar con: ansible-vault encrypt vault.yml
-vault_qdrant_api_key: CHANGEME
-vault_zabbix_psk: CHANGEME
-vault_wazuh_client_keys_line: CHANGEME
+# Secretos del grupo: en OpenBao (infra-tf/grupos/qdrant), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_qdrant_api_key: "CAMBIAR"
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

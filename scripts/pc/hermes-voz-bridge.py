@@ -1,7 +1,18 @@
-#!/home/usuario/.local/share/kokoro-tts/venv/bin/python
-"""Servidor HTTP de la voz de Hermes con Kokoro. Misma API que el servidor de
-Piper al que sustituye (POST /speak con texto, devuelve audio/wav). Si
-Kokoro falla, usa Piper como respaldo.
+#!/home/lucifer/.local/share/kokoro-tts/venv/bin/python
+"""
+Envoltorio HTTP de la voz de Hermes con Kokoro (2026-09-24), sustituto de
+piper-bridge.py: misma API (POST /speak {"text": ...} -> audio/wav) y mismo
+puerto, asi que el bot (voice_client.synthesize, CT ia-asistente) no cambia.
+
+Voz que elegi tras escuchar muestras: mezcla 65 % em_alex
+(espanol) + 35 % bm_george (ingles britanico), a velocidad 1.05 (0.95 al
+principio; un 10 % mas rapida a peticion del usuario el mismo dia) - mas grave
+y con mas aplomo que las voces espanolas solas.
+
+El modelo se carga una vez y se queda en memoria (CPU, ~3 s por cada 14 s
+de audio). Si Kokoro falla en una peticion, se genera con Piper como antes,
+para que Hermes no se quede mudo. Solo accesible desde el CT ia-asistente
+(regla ufw del puerto 8091), igual que antes.
 """
 import io
 import json
@@ -29,27 +40,22 @@ cerrojo = threading.Lock()
 
 
 def con_kokoro(texto: str) -> bytes:
-    """Sintetiza voz con Kokoro."""
     ...
 
 
 def con_piper(texto: str) -> bytes:
-    """Sintetiza voz con Piper."""
     ...
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        """Recibe un texto y devuelve el audio sintetizado."""
         ...
 
     def log_message(self, fmt, *args):
-        """Silencia el log por peticion."""
         ...
 
 
 def main():
-    """Punto de entrada: arranca el servidor HTTP de voz."""
     ...
 
 

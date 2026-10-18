@@ -1,0 +1,36 @@
+# CT 129 "pbs" - Proxmox Backup Server. Ver lxc-pbs.tf y docs/copias.md.
+
+pbs_puerto: 8007
+pbs_datastore: lb2
+# Carpeta de lb2 en el host (bind mount a /datastore en el CT).
+pbs_datastore_host: /plex-server/lb2/pbs
+# El usuario 'backup' del CT (uid 34) es 100034 en el host (CT sin privilegios).
+pbs_uid_host: 100034
+
+# Nombre del almacen en Proxmox y de la tarea diaria.
+pbs_storage_pve: pbs-lb2
+pbs_tarea: copias-diarias
+pbs_hora: "02:30"
+# VMs de OKD fuera (laboratorio que se reconstruye; decision del 15-10).
+pbs_excluir_vmid: [220, 221, 222]
+
+# Retencion (prune job del propio PBS).
+pbs_keep_daily: 7
+pbs_keep_weekly: 4
+pbs_keep_monthly: 6
+
+# Origenes del puerto de PBS: el host (hace las copias), agents y administracion.
+pbs_origenes_api: []  # se define en el inventario privado
+pbs_ssh_allowed_sources: []  # se define en el inventario privado
+
+# Datasets ZFS del host que no entran en las copias de los CT (son bind
+# mounts) y no se pueden volver a descargar. Steam y la multimedia quedan
+# fuera a proposito (se vuelven a bajar). Ver docs/copias.md.
+pbs_datasets:
+  - id: minecraft
+    dataset: games/minecraft
+pbs_hora_datasets: "03:30"
+
+# Se reinicia si cambia una raiz de la CA de casa (rol ca_casa): OIDC con
+# auth.home.arpa.
+ca_casa_reiniciar: [proxmox-backup-proxy, proxmox-backup]

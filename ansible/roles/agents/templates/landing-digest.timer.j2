@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Resumen semanal de los lunes del blog, cada 15 minutos
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=false
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

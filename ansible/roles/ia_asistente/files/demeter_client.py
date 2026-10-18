@@ -4,10 +4,11 @@ import socket
 
 
 def consult(args):
-    """Envia una consulta al servicio de Demeter y devuelve la respuesta."""
     ...
 
 
 def deshacer(candidate_id, actor):
-    """Pide al servicio de Demeter que deshaga una compra aprobada automaticamente."""
+    """Papelera de Element: pide a demeter-undo que deshaga una compra que
+    aprobo la automatica. Solo la llama el manejador de reacciones de Hermes,
+    nunca el modelo. Devuelve el dict de respuesta ({'ok': ...})."""
     ...

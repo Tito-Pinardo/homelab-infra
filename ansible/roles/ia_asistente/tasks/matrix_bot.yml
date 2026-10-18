@@ -1,5 +1,7 @@
-# Bot de Matrix, separado del relay de alertas: no quiero que un fallo del
-# bot afecte al homeserver.
+# Bot conversacional de Matrix - servicio SEPARADO del relay de alertas
+# (CT111/synapse). Deliberado: anadir logica de LLM+tools+Qdrant al mismo
+# CT que aloja la base de datos de Synapse pondria en riesgo el homeserver
+# si el bot se cuelga o consume de mas - ver runbook.
 
 - name: Instalar matrix-nio con soporte E2EE (mismo paquete que el relay de alertas)
   ansible.builtin.apt:

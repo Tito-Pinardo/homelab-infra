@@ -1,0 +1,173 @@
+---
+# CT 123 como agent: lo que el runner de despliegue necesita en ~/.infra-tf
+# (ver docs/despliegue.md). Todo 0600/0700: lleva secretos.
+#   - include_role: { name: forgejo, tasks_from: despliegue_agent }
+
+- name: Directorios del despliegue
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - /home/agent/.infra-tf
+    - /home/agent/.infra-tf/runner
+    - /home/agent/.infra-tf/trabajos
+    - /home/agent/.infra-tf/planes
+    - /home/agent/.terraform.d/plugin-cache
+
+- name: Datos del relay de Matrix para los avisos del despliegue
+  ansible.builtin.template:
+    src: despliegue-matrix.env.j2
+    dest: /home/agent/.infra-tf/matrix.env
+    mode: "0600"
+  no_log: true
+
+# Token de tito solo para comentar en los PR (y leer el repo). Forgejo solo
+# lo enseña al crearlo: si se pierde el fichero, se borra y se crea otro.
+- name: Token de Forgejo para comentar en los PR
+  ansible.builtin.stat:
+    path: /home/agent/.infra-tf/forgejo-token
+  register: forgejo_token_fichero
+
+- name: Crear el token (si falta)
+  when: not forgejo_token_fichero.stat.exists
+  no_log: true
+  block:
+    - name: Borrar el token anterior con ese nombre (si lo hay)
+      ansible.builtin.uri:
+        url: "{{ forgejo_api_directa }}/users/{{ hostvars['forgejo'].forgejo_admin_user }}/tokens/despliegue-infra-tf"
+        method: DELETE
+        user: "{{ hostvars['forgejo'].forgejo_admin_user }}"
+        password: "{{ hostvars['forgejo'].forgejo_admin_password }}"
+        force_basic_auth: true
+        status_code: [204, 404]
+
+    - name: Crear el token
+      ansible.builtin.uri:
+        url: "{{ forgejo_api_directa }}/users/{{ hostvars['forgejo'].forgejo_admin_user }}/tokens"
+        method: POST
+        user: "{{ hostvars['forgejo'].forgejo_admin_user }}"
+        password: "{{ hostvars['forgejo'].forgejo_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: despliegue-infra-tf
+          scopes: [write:issue, read:repository]
+        status_code: [201]
+      register: forgejo_token_nuevo
+
+    - name: Guardar el token
+      ansible.builtin.copy:
+        content: "{{ forgejo_token_nuevo.json.sha1 }}\n"
+        dest: /home/agent/.infra-tf/forgejo-token
+        mode: "0600"
+
+# Punto de partida: lo que hay en master el dia que se monta ya estaba
+# aplicado a mano. Desde aqui, el despliegue compara contra este commit.
+- name: Ultimo commit desplegado
+  ansible.builtin.stat:
+    path: /home/agent/.infra-tf/ultimo-desplegado
+  register: forgejo_ultimo
+
+- name: Fijar el punto de partida (solo la primera vez)
+  when: not forgejo_ultimo.stat.exists
+  block:
+    - name: Leer la punta de master en Forgejo
+      ansible.builtin.command:
+        argv: [git, ls-remote, "{{ forgejo_repo_url }}", refs/heads/master]
+      register: forgejo_master
+      changed_when: false
+
+    - name: Guardar la punta de master como ultimo desplegado
+      ansible.builtin.copy:
+        content: "{{ forgejo_master.stdout.split()[0] }}\n"
+        dest: /home/agent/.infra-tf/ultimo-desplegado
+        mode: "0600"
+
+# ---------------------------------------------------------------- renovate
+
+# Node propio para Renovate (pide Node 24; el del sistema es el de Codeman).
+- name: Descargar Node para Renovate (suma fijada en group_vars)
+  ansible.builtin.get_url:
+    url: "https://nodejs.org/dist/v{{ renovate_node_version }}/node-v{{ renovate_node_version }}-linux-x64.tar.xz"
+    dest: "/home/agent/.infra-tf/node-v{{ renovate_node_version }}-linux-x64.tar.xz"
+    checksum: "sha256:{{ renovate_node_sha256 }}"
+    mode: "0600"
+
+- name: Desempaquetar Node
+  ansible.builtin.unarchive:
+    src: "/home/agent/.infra-tf/node-v{{ renovate_node_version }}-linux-x64.tar.xz"
+    dest: /home/agent/.infra-tf
+    remote_src: true
+    creates: "/home/agent/.infra-tf/node-v{{ renovate_node_version }}-linux-x64/bin/node"
+
+- name: Instalar Renovate (version fijada en group_vars)
+  ansible.builtin.command:
+    argv:
+      - "/home/agent/.infra-tf/node-v{{ renovate_node_version }}-linux-x64/bin/npm"
+      - install
+      - --silent
+      - --prefix
+      - "/home/agent/.infra-tf/renovate-{{ renovate_version }}"
+      - "renovate@{{ renovate_version }}"
+    creates: "/home/agent/.infra-tf/renovate-{{ renovate_version }}/node_modules/.bin/renovate"
+  environment:
+    PATH: "/home/agent/.infra-tf/node-v{{ renovate_node_version }}-linux-x64/bin:/usr/bin:/bin"
+
+- name: Token del bot de Renovate
+  ansible.builtin.stat:
+    path: /home/agent/.infra-tf/renovate-token
+  register: forgejo_renovate_token_fichero
+
+# Como admin con la cabecera Sudo: el bot no tiene contraseña conocida.
+- name: Crear el token de Renovate (si falta)
+  when: not forgejo_renovate_token_fichero.stat.exists
+  no_log: true
+  block:
+    - name: Borrar el token anterior con ese nombre (si lo hay)
+      ansible.builtin.uri:
+        url: "{{ forgejo_api_directa }}/users/renovate/tokens/renovate-infra-tf"
+        method: DELETE
+        user: "{{ hostvars['forgejo'].forgejo_admin_user }}"
+        password: "{{ hostvars['forgejo'].forgejo_admin_password }}"
+        force_basic_auth: true
+        headers:
+          Sudo: renovate
+        status_code: [204, 404]
+
+    - name: Crear el token
+      ansible.builtin.uri:
+        url: "{{ forgejo_api_directa }}/users/renovate/tokens"
+        method: POST
+        user: "{{ hostvars['forgejo'].forgejo_admin_user }}"
+        password: "{{ hostvars['forgejo'].forgejo_admin_password }}"
+        force_basic_auth: true
+        headers:
+          Sudo: renovate
+        body_format: json
+        body:
+          name: renovate-infra-tf
+          scopes: [write:repository, write:issue, read:user, read:organization, read:misc]
+        status_code: [201]
+      register: forgejo_renovate_token_nuevo
+
+    - name: Guardar el token
+      ansible.builtin.copy:
+        content: "{{ forgejo_renovate_token_nuevo.json.sha1 }}\n"
+        dest: /home/agent/.infra-tf/renovate-token
+        mode: "0600"
+
+- name: Fichero de registro del runner de despliegue
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/forgejo-runner
+      - create-runner-file
+      - --instance
+      - "{{ forgejo_api_directa | regex_replace('/api/v1$', '') }}"
+      - --secret
+      - "{{ hostvars['forgejo'].forgejo_despliegue_secret }}"
+      - --name
+      - agents-despliegue
+    chdir: /home/agent/.infra-tf/runner
+    creates: /home/agent/.infra-tf/runner/.runner
+  no_log: true

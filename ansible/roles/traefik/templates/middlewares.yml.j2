@@ -41,3 +41,20 @@ http:
         customRequestHeaders:
           X-Forwarded-Proto: "https"
           X-Forwarded-Port: "443"
+{% if traefik_crowdsec | default(false) %}
+
+    # Bouncer de CrowdSec (docs/crowdsec.md). En modo stream: trae las
+    # decisiones del LAPI cada minuto y decide en memoria; si CrowdSec cae,
+    # sigue con las ultimas que tenia.
+    crowdsec:
+      plugin:
+        crowdsec:
+          enabled: true
+          crowdsecMode: stream
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: 127.0.0.1:8080
+          crowdsecLapiKeyFile: /etc/traefik/crowdsec-lapi.key
+          updateIntervalSeconds: 60
+          forwardedHeadersTrustedIPs: {{ traefik_ips_confiables | default([]) | to_json }}
+          clientTrustedIPs: {{ crowdsec_ips_casa | to_json }}
+{% endif %}

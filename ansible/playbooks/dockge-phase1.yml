@@ -1,6 +1,7 @@
 ---
-# Fase 1 de dockge: firewall base del CT y los servicios sin dependencias
-# con el resto del stack.
+# Fase 0+1 de la migracion del CT106: firewall base del CT + los tres
+# servicios aislados (sin dependencias cruzadas con el resto del stack).
+# Ver el runbook de Obsidian para el plan completo por fases.
 - name: Fase 0 - firewall base del CT
   hosts: dockge_base
   become: true

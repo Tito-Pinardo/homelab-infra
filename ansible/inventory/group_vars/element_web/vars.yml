@@ -1,13 +1,20 @@
-# Version fijada a proposito: una version nueva de Element Web solo se
-# instala cuando subo este numero.
-element_web_version: "1.12.27"
+# Versión fijada a propósito (igual que traefik_version): así el role es
+# idempotente y una versión nueva de Element Web solo se instala cuando TÚ
+# subes este número, nunca sola en un re-run del playbook.
+# renovate: datasource=docker depName=vectorim/element-web extractVersion=^v(?<version>.+)$
+element_web_version: "1.12.31"
 
-# Homeserver propio, privado y sin federacion.
+# Homeserver propio (CT 111, Synapse - ver ansible/roles/synapse), privado
+# y sin federacion. Antes apuntaba a matrix.org (comentado abajo) - cambiar
+# de vuelta ahi si algun dia se retira Synapse.
 element_homeserver_base_url: "https://matrix.example.org"
 element_homeserver_server_name: "matrix.example.org"
+# element_homeserver_base_url: "https://matrix-client.matrix.org"
+# element_homeserver_server_name: "matrix.org"
 
-# Sin identity server: el homeserver es privado. Vacio hace que config.json.j2
-# omita el bloque m.identity_server.
+# Sin identity server: Synapse es privado, sin busqueda de usuarios por
+# email/telefono de terceros - no aplica aqui. Vacio => config.json.j2 omite
+# el bloque m.identity_server por completo.
 element_identity_server_url: ""
 
 element_brand: "Element"

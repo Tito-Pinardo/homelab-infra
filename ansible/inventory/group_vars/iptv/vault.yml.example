@@ -1,0 +1,6 @@
+# Secretos del grupo: en OpenBao (infra-tf/grupos/iptv), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_iptv_admin_password: "CAMBIAR"
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

@@ -1,15 +1,29 @@
-# Activa la redireccion del DNS de la LAN hacia Technitium conservando la IP
-# del servicio. Antes de aplicar la redireccion comprueba que Technitium
-# responde correctamente; si no lo hace, no cambia nada para no dejar la red
-# sin DNS. Si la redireccion ya esta activa, no hace nada.
+import pathlib,subprocess,socket,struct,secrets,time
+
+# Canario: antes de redirigir el puerto 53 real hacia Technitium (DNAT),
+# comprueba que responde bien a esta consulta contra su puerto interno
+# (5300). Si no supera esto en 20 intentos, NO se aplica la redireccion -
+# evita dejar la LAN sin DNS si Technitium tarda en cargar zonas al arrancar.
 canary_hostname = "{{ technitium_canary_hostname }}"
 
-
-def dns_responde(hostname):
-    """Indica si Technitium resuelve el nombre de comprobacion."""
+def encode_qname(hostname):
     ...
 
-
-def activar_redireccion():
-    """Aplica la regla de redireccion del DNS si aun no esta activa."""
-    ...
+ident=secrets.randbelow(65536)
+q=struct.pack('!HHHHHH',ident,0x100,1,0,0,0)+encode_qname(canary_hostname)+struct.pack('!HH',1,1)
+ready=False
+for attempt in range(20):
+ try:
+  with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s:
+   s.settimeout(1);s.sendto(q,('127.0.0.1',5300));r=s.recv(4096)
+  rid,flags,qn,an,ns,ar=struct.unpack('!HHHHHH',r[:12])
+  ready=rid==ident and flags&15==0 and an>0
+  if ready:break
+ except (OSError,struct.error):pass
+ time.sleep(1)
+assert ready,'Technitium no supera comprobacion local; no se cambia el destino DNS'
+exists=subprocess.run(['nft','list','table','inet','casa_dns_destino'],capture_output=True)
+if exists.returncode==0:print('Redireccion DNS ya activa');raise SystemExit(0)
+subprocess.run(['nft','-c','-f','/etc/nftables.d/casa-dns-destino.nft'],check=True)
+subprocess.run(['nft','-f','/etc/nftables.d/casa-dns-destino.nft'],check=True)
+print('Consultas DNS nuevas hacia Technitium, IP conservada')

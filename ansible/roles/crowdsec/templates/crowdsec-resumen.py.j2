@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Resumen diario de CrowdSec a la sala de alertas de Element.
+
+Gestionado por Ansible (rol crowdsec). Cruza las ultimas 24 h de alertas
+propias y la lista comunitaria con el log de acceso de Traefik: cuanto se
+bloqueo (o se habria bloqueado, en modo solo mirar) y que IPs de esas
+recibieron respuestas normales (2xx), por si fueran gente legitima.
+"""
+import collections
+import datetime
+import ipaddress
+import json
+import os
+import subprocess
+import urllib.request
+
+BLOQUEA = {{ crowdsec_bloquear | bool }}
+MIRAR_HASTA = "{{ crowdsec_mirar_hasta }}"
+LOGS = ["/var/log/traefik/traefik-access.log.1", "/var/log/traefik/traefik-access.log"]
+IP_CASA = "/etc/crowdsec/parsers/s02-enrich/ip-casa.yaml"
+# Una IP de Cloudflare en el log no es un visitante (lineas de antes de fiarse
+# de su X-Forwarded-For): no cuenta.
+CLOUDFLARE = [ipaddress.ip_network(n) for n in {{ traefik_ips_confiables | default([]) | to_json }}]
+
+
+def cscli(*args):
+    ...
+
+
+def externa(ip):
+    ...
+
+
+def ip_casa():
+    ...
+
+
+def avisar(texto):
+    ...
+
+
+def main():
+    ...
+
+
+if __name__ == "__main__":
+    main()

@@ -1,2 +1,2 @@
-# Identidad publica del conector del asistente: rsync de solo lectura a las notas.
-obsidian_sync_public_key: "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
+# Identidad pública del conector CT118. Acceso de rsync solo lectura al vault.
+obsidian_sync_public_key: "ssh-ed25519 AAAA...clave-publica usuario@equipo"

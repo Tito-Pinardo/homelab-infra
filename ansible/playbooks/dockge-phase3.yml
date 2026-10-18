@@ -1,5 +1,5 @@
 ---
-# Fase 3 de dockge: Caddy + Authelia + arr.
+# Fase 3 de la migracion del CT106: el monolito (Caddy+Authelia+arr).
 - name: Fase 3 - Caddy + Authelia + arr stack
   hosts: arr_stack
   become: true

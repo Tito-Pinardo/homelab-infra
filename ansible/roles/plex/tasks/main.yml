@@ -1,10 +1,17 @@
 ---
-# Plex sin privilegios con acceso a la GPU (ver lxc-plex.tf). El passthrough
-# de dispositivos y los mount points de las bibliotecas se aplican con
-# 'pct set' en el host: la API de Proxmox los restringe a root@pam.
+# Plex (CT 117) - sin privilegios + idmap/device_passthrough para la GTX
+# 1050 Ti (ver lxc-plex.tf y el runbook para el porque). El passthrough de
+# dispositivos y los mount points de las bibliotecas se aplican via
+# `pct set` por SSH root al host (fuera de Ansible/Terraform - la API de
+# Proxmox restringe ambas cosas a root@pam), no aqui.
 #
-# El driver NVIDIA debe coincidir exactamente con la version del modulo del
-# kernel del host.
+# El driver NVIDIA debe fijarse a la MISMA version exacta que el modulo
+# del kernel del host o NVENC falla con un mismatch - probado en real
+# 2026-09-16 con un CT de prueba desechable: el repo CUDA por defecto
+# instala su ultima version (615.x en su momento), no la que corre el
+# host. Ademas hay que evitar --install-recommends: se cuela el paquete
+# "nvidia-kernel-dkms" GENERICO de Debian (non-free), de una version
+# distinta (535.x) que no sirve para nada aqui.
 
 - name: Instalar dependencias basicas
   ansible.builtin.apt:
@@ -68,16 +75,23 @@
     update_cache: true
 
 - name: Habilitar y arrancar Plex
-  # Estado deseado: Plex arrancado siempre.
+  # Antes de migrar los datos reales del CT 100 este task paraba/deshabilitaba
+  # el servicio a proposito (para que un reinicio no arrancara Plex con una
+  # identidad vacia). Migracion ya hecha y datos reales en su sitio (2026-09-16)
+  # - a partir de ahora el estado deseado es "arrancado siempre".
   ansible.builtin.systemd:
     name: plexmediaserver
     state: started
     enabled: true
 
 - name: Desplegar plexupdate (actualiza a la ultima version del canal Plex Pass)
-  # El repositorio apt de Plex va por detras del canal Plex Pass, asi que uso
-  # plexupdate (github.com/mrworf/plexupdate, ver files/plexupdate/README.md)
-  # con el token que ya esta en Preferences.xml.
+  # El repo apt publico de Plex va por detras del canal Plex Pass (real
+  # 2026-09-16: apt solo ofrecia 1.42.2, la web avisaba de la 1.43.4). El
+  # CT 100 usaba este mismo script (github.com/mrworf/plexupdate) - se copio
+  # tal cual en vez de descargarlo de nuevo, para no depender de que el
+  # proyecto siga vivo/sin cambios. Usa el propio token de PlexOnlineToken
+  # que ya vive en Preferences.xml (copiado del CT 100) - no hace falta
+  # ningun secreto nuevo en el vault.
   ansible.builtin.copy:
     src: "plexupdate/{{ item }}"
     dest: "/usr/local/bin/{{ item }}"

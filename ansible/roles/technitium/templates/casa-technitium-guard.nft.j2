@@ -1,3 +1,14 @@
-# Reglas nftables que protegen los puertos internos de Technitium (web de
-# administracion y DNS interno) para que solo lleguen los origenes previstos.
-# El contenido real de las reglas no se publica.
+table inet casa_technitium_guard {
+ chain input {
+  type filter hook input priority -10; policy accept;
+  iifname "lo" accept
+  ip saddr {{ technitium_web_proxy_source_ip }} tcp dport 53443 accept
+  tcp dport {5380,53443} drop
+  ip saddr {{ technitium_lan_subnet }} udp dport 5300 accept
+  ip saddr {{ technitium_lan_subnet }} tcp dport 5300 accept
+  ip6 saddr fe80::/10 udp dport 5300 accept
+  ip6 saddr fe80::/10 tcp dport 5300 accept
+  udp dport 5300 drop
+  tcp dport 5300 drop
+ }
+}

@@ -1,14 +1,16 @@
 server {
     listen 8443 ssl;
-    server_name paperless.home.example;
+    server_name paperless.home.arpa;
     ssl_certificate /etc/nginx/certs/paperless.crt;
     ssl_certificate_key /etc/nginx/certs/paperless.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     client_max_body_size 200M;
     location / {
         proxy_pass http://127.0.0.1:8000;
-        # Sin estas cabeceras Paperless no recibe el aviso en tiempo real de que un
-        # documento ha terminado de procesarse.
+        # Sin estas 3 cabeceras, Paperless nunca recibe la notificacion en
+        # tiempo real de que un documento termino de procesarse (bug real
+        # 2026-09-09 en el CT 133 original - "Upload complete, waiting..."
+        # colgado, aunque el OCR/indexado si funcionaba server-side).
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";

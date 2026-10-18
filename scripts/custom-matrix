@@ -1,6 +1,8 @@
 #!/usr/bin/python3
-# Integracion de Wazuh hacia Element, solo para alertas de nivel alto.
-# Agrupa las repeticiones de la misma alerta y nunca reenvia logs.
+# Integracion de Wazuh -> Element (Matrix), solo para alertas de nivel alto
+# (el filtro <level> vive en ossec.conf, ver setup_matrix_alerts.py).
+# Mismo patron anti-flood que custom-discord: deduplica/agrupa repeticiones
+# de la misma alerta en una ventana de 5 min, nunca reenvia logs crudos.
 import sys, json, pathlib, urllib.request, urllib.error, urllib.parse, time, fcntl, hashlib
 
 BASE = pathlib.Path("/var/ossec")
@@ -8,7 +10,6 @@ MIN_LEVEL = 12
 
 
 def main():
-    """Reenvia a Matrix las alertas de Wazuh de nivel alto, agrupando repeticiones."""
     ...
 
 

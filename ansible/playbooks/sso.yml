@@ -1,0 +1,187 @@
+---
+# Inicio de sesion unico con Authelia (OIDC, docs/sso.md): Authelia como
+# proveedor y Forgejo, Proxmox y PBS como clientes. A mano: toca el host de
+# Proxmox. Antes, ca-casa.yml (para que se fien de auth.home.arpa) y
+# forgejo.yml (seccion [oauth2_client] de app.ini).
+
+- name: Host de Proxmox al inventario de esta ejecucion
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox
+      ansible.builtin.add_host:
+        name: pve
+        groups: pve_dynamic
+        ansible_host: 192.0.2.2
+        ansible_user: root
+      changed_when: false
+
+# ------------------------------------------------------------- Authelia
+
+- name: Clientes OIDC en Authelia
+  hosts: dockge
+  gather_facts: false
+  vars:
+    config: /opt/stacks/arr/proxy/authelia/configuration.yml
+  tasks:
+    # configuration.yml no lo gestiona Ansible (secretos de Authelia desde la
+    # instalacion): solo este bloque, dentro de la lista de clientes.
+    - name: Clientes de este playbook en configuration.yml
+      ansible.builtin.blockinfile:
+        path: "{{ config }}"
+        insertafter: '^    clients:$'
+        marker: "      # {mark} clientes de playbooks/sso.yml (docs/sso.md)"
+        backup: true
+        # Plantilla aparte: las etiquetas de Jinja en un bloque literal dejan
+        # su sangria pegada a la linea siguiente.
+        block: "{{ lookup('template', 'authelia-clientes.j2') | trim('\n') }}"
+      register: sso_authelia
+      no_log: true
+
+    - name: Validar y aplicar
+      when: sso_authelia.changed  # noqa: no-handler
+      block:
+        - name: Validar la configuracion de Authelia
+          ansible.builtin.command: docker exec authelia authelia validate-config --config /config/configuration.yml
+          changed_when: false
+
+        - name: Reiniciar Authelia (no recarga la configuracion en caliente)
+          ansible.builtin.command: docker restart authelia
+          changed_when: true
+
+        - name: Esperar a que Authelia responda
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9091/api/health
+          register: sso_salud
+          until: sso_salud.status == 200
+          retries: 20
+          delay: 3
+      rescue:
+        - name: Volver a la configuracion anterior
+          ansible.builtin.copy:
+            src: "{{ sso_authelia.backup_file }}"
+            dest: "{{ config }}"
+            remote_src: true
+            mode: "0600"
+          when: sso_authelia.backup_file is defined
+
+        - name: Fallo en Authelia
+          ansible.builtin.fail:
+            msg: "La configuracion de Authelia no es valida: se ha dejado la anterior."
+
+# ------------------------------------------------------------- Forgejo
+
+- name: Forgejo, inicio de sesion con Authelia
+  hosts: forgejo
+  gather_facts: false
+  vars:
+    cli: [/usr/local/bin/forgejo, --config, /etc/forgejo/app.ini, admin, auth]
+  tasks:
+    - name: Fuentes de autenticacion
+      ansible.builtin.command:
+        argv: "{{ cli + ['list'] }}"
+      become: true
+      become_user: git
+      become_method: ansible.builtin.su
+      register: sso_fuentes
+      changed_when: false
+
+    - name: Fuente "authelia" (crear o actualizar)
+      vars:
+        sso_id: "{{ (sso_fuentes.stdout_lines | select('search', '\\sauthelia\\s') | first | default('')).split() | first | default('') }}"
+      ansible.builtin.command:
+        argv: >-
+          {{ cli + (['update-oauth', '--id', sso_id] if sso_id else ['add-oauth'])
+             + ['--name', 'authelia', '--provider', 'openidConnect',
+                '--key', 'forgejo', '--secret=' ~ hostvars['dockge'].vault_oidc_forgejo_secreto,
+                '--auto-discover-url', sso_emisor ~ '/.well-known/openid-configuration',
+                '--scopes', 'openid', '--scopes', 'email', '--scopes', 'profile', '--scopes', 'groups',
+                '--group-claim-name', 'groups',
+                '--required-claim-name', 'groups', '--required-claim-value', sso_grupo_admin,
+                '--skip-local-2fa'] }}
+      become: true
+      become_user: git
+      become_method: ansible.builtin.su
+      changed_when: not sso_id
+      no_log: true
+
+# ------------------------------------------------------------- Proxmox VE
+
+- name: Proxmox VE, realm de Authelia
+  hosts: pve_dynamic
+  gather_facts: false
+  tasks:
+    - name: Realms
+      ansible.builtin.command: pveum realm list --output-format json
+      register: sso_realms
+      changed_when: false
+
+    - name: Realm "authelia" (crear o actualizar)
+      vars:
+        existe: "{{ 'authelia' in (sso_realms.stdout | from_json | map(attribute='realm') | list) }}"
+      ansible.builtin.command:
+        argv: >-
+          {{ ['pveum', 'realm', ('modify' if existe else 'add'), 'authelia']
+             + ([] if existe else ['--type', 'openid', '--username-claim', 'username'])
+             + ['--issuer-url', sso_emisor, '--client-id', 'proxmox',
+                '--client-key=' ~ hostvars['dockge'].vault_oidc_proxmox_secreto,
+                '--scopes', 'openid email profile',
+                '--autocreate', '0', '--comment', 'Authelia (docs/sso.md)'] }}
+      # username-claim solo al crear: Proxmox no deja cambiarlo despues.
+      changed_when: not existe
+      no_log: true
+
+    - name: Usuarios
+      ansible.builtin.command: pveum user list --output-format json
+      register: sso_usuarios
+      changed_when: false
+
+    - name: Usuario de Authelia {{ sso_usuario }}
+      ansible.builtin.command: "pveum user add {{ sso_usuario }}@authelia --comment 'Authelia (docs/sso.md)'"
+      when: (sso_usuario ~ '@authelia') not in (sso_usuarios.stdout | from_json | map(attribute='userid') | list)
+      changed_when: true
+
+    - name: Administrador en todo
+      ansible.builtin.command: "pveum acl modify / --users {{ sso_usuario }}@authelia --roles Administrator"
+      changed_when: false
+
+# ------------------------------------------------------------- PBS
+
+- name: Proxmox Backup Server, realm de Authelia
+  hosts: pbs
+  gather_facts: false
+  tasks:
+    - name: Realms OpenID
+      ansible.builtin.command: proxmox-backup-manager openid list --output-format json
+      register: sso_realms
+      changed_when: false
+
+    # En PBS, username-claim es el nombre literal del claim (y solo se pone
+    # al crear) y scopes va en un solo argumento.
+    - name: Realm "authelia" (crear o actualizar)
+      vars:
+        existe: "{{ 'authelia' in (sso_realms.stdout | from_json | map(attribute='realm') | list) }}"
+      ansible.builtin.command:
+        argv: >-
+          {{ ['proxmox-backup-manager', 'openid', ('update' if existe else 'create'), 'authelia']
+             + ([] if existe else ['--username-claim', 'preferred_username'])
+             + ['--issuer-url', sso_emisor, '--client-id', 'pbs',
+              '--client-key=' ~ hostvars['dockge'].vault_oidc_pbs_secreto,
+              '--scopes', 'openid email profile',
+              '--autocreate', 'false', '--comment', 'Authelia (docs/sso.md)'] }}
+      changed_when: not existe
+      no_log: true
+
+    - name: Usuarios
+      ansible.builtin.command: proxmox-backup-manager user list --output-format json
+      register: sso_usuarios
+      changed_when: false
+
+    - name: Usuario de Authelia {{ sso_usuario }}
+      ansible.builtin.command: "proxmox-backup-manager user create {{ sso_usuario }}@authelia --comment 'Authelia (docs/sso.md)'"
+      when: (sso_usuario ~ '@authelia') not in (sso_usuarios.stdout | from_json | map(attribute='userid') | list)
+      changed_when: true
+
+    - name: Administrador en todo
+      ansible.builtin.command: "proxmox-backup-manager acl update / Admin --auth-id {{ sso_usuario }}@authelia"
+      changed_when: false

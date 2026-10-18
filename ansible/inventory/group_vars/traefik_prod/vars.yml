@@ -1,10 +1,23 @@
-# Variables publicas del grupo traefik_prod. Las credenciales van cifradas en
-# vault.yml. Las rutas estan en group_vars/all/services.yml.
+# Variables PUBLICAS del grupo traefik_prod - esto SÍ va a git, no tiene secretos.
+# Los valores reales de credenciales viven cifrados en vault.yml (mismo directorio).
+#
+# traefik_routes vive en group_vars/all/services.yml desde el 2026-09-15 -
+# Homepage (CT 112, grupo homepage_web) tambien lo necesita y no pertenece
+# a este grupo. Aqui solo quedan las variables propias de Traefik.
+#
+# Excluido de la migracion original (no son rutas por dominio):
+#   - 00_middlewares.yml / 00_transports.yml -> ahora los despliega el rol
+#     directamente (templates/middlewares.yml.j2, transports.yml.j2)
+#   - web-svc-nodeport.yaml -> manifiesto de Kubernetes (apiVersion/kind Service),
+#     no es config de Traefik. Probablemente un fichero suelto sin efecto real
+#     (Traefik ignora las claves que no reconoce). Revisar si se puede borrar
+#     del 109, no migrado aqui.
 
-traefik_version: "3.5.3"
-traefik_acme_email: "cuenta1@example.com"
+# renovate: datasource=docker depName=traefik extractVersion=^v(?<version>.+)$
+traefik_version: "3.7.14"
+traefik_acme_email: "admin@example.org"
 
-# El token viene de vault.yml
+# El token viene de vault.yml (variable vault_traefik_cloudflare_api_token, cifrada)
 traefik_cloudflare_api_token: "{{ vault_traefik_cloudflare_api_token }}"
 
 traefik_domains:
@@ -12,13 +25,61 @@ traefik_domains:
     wildcard: true
   - domain: "example.net"
     wildcard: false
-  - domain: "example.com"
+  - domain: "titopinardogutierrez.com"
     wildcard: false
 
-# Dashboard: host publico y hash de basicAuth desde el vault.
+# Dashboard: igual que en el rol, host publico + hash de basicAuth desde vault.
 traefik_dashboard_host: "traefik.example.org"
 # El dashboard no se publica en internet: sin CNAME en Cloudflare y solo
-# accesible desde las redes permitidas (en local: https://traefik.home.example).
+# accesible desde la LAN y la VPN (en local: https://traefik.home.arpa).
 traefik_dashboard_public: false
 traefik_dashboard_allowed_ips: []  # se define en el inventario privado
 traefik_dashboard_htpasswd: "{{ vault_traefik_dashboard_htpasswd }}"
+
+# --- CrowdSec (roles/crowdsec, docs/crowdsec.md) ---------------------------
+
+# Rangos de Cloudflare (https://www.cloudflare.com/ips/, revisados 2026-10-15).
+# Traefik solo se fia del X-Forwarded-For que llega desde ellos.
+traefik_ips_confiables:
+  - 173.245.48.0/20
+  - 103.21.244.0/22
+  - 103.22.200.0/22
+  - 103.31.4.0/22
+  - 141.101.64.0/18
+  - 108.162.192.0/18
+  - 190.93.240.0/20
+  - 188.114.96.0/20
+  - 197.234.240.0/22
+  - 198.41.128.0/17
+  - 162.158.0.0/15
+  - 104.16.0.0/13
+  - 104.24.0.0/14
+  - 172.64.0.0/13
+  - 131.0.72.0/22
+  - 2400:cb00::/32
+  - 2606:4700::/32
+  - 2803:f800::/32
+  - 2405:b500::/32
+  - 2405:8100::/32
+  - 2a06:98c0::/29
+  - 2c0f:f248::/32
+
+traefik_crowdsec: true
+traefik_crowdsec_plugin_version: v1.7.1
+
+# Bloqueando desde el 18-10, tras 3 dias solo mirando: habria bloqueado 7.875
+# peticiones de 143 IPs en 72 h; las que tuvieron respuestas 2xx eran escaneres
+# de nubes (GCP/AWS/Azure) en paginas publicas, nadie conocido. Volver a solo
+# mirar: false (el bouncer sale de las rutas).
+crowdsec_bloquear: true
+crowdsec_mirar_hasta: "2026-10-22"
+
+# Nunca se bloquean (la IP publica de casa la anade ip-casa.timer).
+crowdsec_ips_casa: ["192.168.0.0/16", "198.51.100.0/24"]
+
+crowdsec_hora_resumen: "09:00"
+crowdsec_colecciones_lista:
+  - crowdsecurity/traefik
+  - crowdsecurity/http-cve
+  - crowdsecurity/sshd
+  - crowdsecurity/linux

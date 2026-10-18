@@ -1,13 +1,20 @@
-# CT de agentes: versiones fijadas a proposito, para que una release rota de
-# un CLI no rompa un despliegue futuro. Para actualizar, subo la version aqui
-# y vuelvo a ejecutar playbooks/agents.yml.
+# CT 123 "agents" - versiones fijadas a proposito (igual que qdrant_version /
+# traefik_version): una release rota de cualquier CLI no rompe un despliegue
+# futuro sin que nos demos cuenta. Para actualizar: subir aqui y re-ejecutar
+# playbooks/agents.yml.
 #
-# Los agentes se usan con suscripcion, no con API keys: el login se hace a
-# mano una vez por CLI y el token queda en el home del usuario.
+# Los agentes se usan con SUSCRIPCION (Claude Pro/Max, cuenta Google, cuenta
+# ChatGPT), nunca con API keys de pago por tokens: el login se hace a mano
+# UNA vez por CLI como usuario 'agent' (ver runbook) y el token queda en su
+# home. Por eso aqui no hay vault.yml ni variables *_API_KEY - y el
+# servicio de Codeman NO debe llevar ANTHROPIC_API_KEY/OPENAI_API_KEY/
+# GEMINI_API_KEY (si existieran, los CLI las preferirian y cobrarian aparte).
 agents_node_major: 22
 
 agents_npm_packages:
   # Codeman: panel web con las terminales reales (tmux) de cada agente.
+  # Sustituye a Vibe Kanban (2026-09-22, no convencio al usuario y dependia
+  # de api.vibekanban.com) - el role lo desinstala y borra sus datos.
   - name: aicodeman
     version: "1.32.0"
   - name: "@anthropic-ai/claude-code"
@@ -19,37 +26,88 @@ agents_npm_packages:
   - name: opencode-ai
     version: "1.18.32"
 
-# Mismas versiones que en mi otro checkout, para que un playbook se comporte
-# igual se lance desde donde se lance.
-agents_ansible_core_version: "2.21.4"
+# Mismas versiones que el checkout de lucifer (2026-09-22), para que un
+# playbook se comporte igual se lance desde donde se lance.
+# renovate: datasource=pypi depName=ansible-core
+agents_ansible_core_version: "2.21.5"
 agents_ansible_collections:
   - ansible.posix
   - community.general
   - community.proxmox
   - community.docker
   - community.crypto
-agents_terraform_version: "1.15.9"
+# renovate: datasource=docker depName=hashicorp/terraform
+agents_terraform_version: "1.16.6"
 
 agents_user: agent
 agents_ui_port: 8765
-agents_ui_host: "agents.home.example"
+agents_ui_host: "agents.home.arpa"
 
-# Unico origen que puede hablar con el puerto de Codeman: el proxy de la red
-# local.
-agents_ui_proxy_source_ip: "192.0.2.24"
+# Unico origen que puede hablar con el puerto de Codeman: el Caddy de
+# *.home.arpa (CT 122, dockge). Quien llegue al puerto controla los
+# agentes, asi que nadie mas debe llegar.
+agents_ui_proxy_source_ip: "192.0.2.243"
 
-# Codeman exige contrasena propia si no escucha solo en loopback. Queda como
-# segunda capa detras de la autenticacion del proxy.
+# Codeman exige contrasena propia si no escucha solo en loopback (y aqui
+# no puede: Caddy esta en otro CT). Queda como segunda capa detras de
+# Authelia 2FA. Usuario 'admin'. Ver: ansible-vault view
+# inventory/group_vars/agents/vault.yml
 agents_codeman_password: "{{ vault_agents_codeman_password }}"
 
-# Agente local: OpenCode contra el modelo de chat de mi PC. Solo disponible
-# mientras el PC esta encendido.
-agents_ollama_url: "http://192.0.2.13:11434/v1"
+# Agente local: OpenCode contra el Ollama de CHAT de lucifer (GPU). Solo
+# disponible mientras ese PC este encendido (se suspende).
+agents_ollama_url: "http://192.0.2.30:11434/v1"
 agents_ollama_model: "qwen3:8b"
 
-# Checkout de trabajo del repositorio para el usuario 'agent'.
-agents_infra_repo: "ssh://usuario@192.0.2.13/home/usuario/infra-tf-sync.git"
+# Checkout de trabajo de infra-tf del usuario 'agent': desde el 14-10 se
+# clona de Forgejo, el origen (ver docs/forgejo.md).
+agents_infra_repo: "{{ forgejo_repo_url }}"
 
-# roles/hardening: origenes desde los que el usuario agent puede usar
-# reenvio local (VS Code Remote-SSH).
+# roles/hardening: unicas IPs desde las que el usuario agent puede usar
+# reenvio local (VS Code Remote-SSH). IPs exactas, no la /24 de WireGuard:
+# solo el portatil del usuario y su PC de escritorio.
 hardening_forwarding_sources: []  # se define en el inventario privado
+
+# Resumen semanal de los lunes del blog (tools/digest de la web, ver
+# docs/landing.md). Corre como 'agent' cada 15 minutos sobre un clon propio
+# del repo de la web, usa el bot de Matrix de la web (sus secretos estan en
+# el vault de landing) y solo publica si el dueno responde «publicar».
+# La clave de Gemini NO va aqui ni en ningun entorno (ver arriba: el CLI de
+# Gemini la preferiria): la pone el usuario a mano en
+# ~agent/.config/landing-digest/gemini.key (0600). Sin ella usa el Ollama
+# de lucifer, si el PC esta encendido y su firewall deja pasar a este CT.
+agents_digest_enabled: true
+agents_digest_repo: "{{ landing_cd_repo }}"
+agents_digest_owner: "@tito:matrix.example.org"
+agents_digest_ollama_url: "http://192.0.2.30:11434"
+
+# Forgejo (CT 126) es el origen de infra-tf desde el 14-10; el repo central
+# de antes queda como copia de solo lectura. Ver roles/forgejo/tasks/central.yml
+# y docs/forgejo.md.
+forgejo_repo_url: "ssh://git@192.0.2.235:2222/tito/infra-tf.git"
+forgejo_central_repo: /home/agent/infra-tf-sync.git
+forgejo_mirror_key: /home/agent/.ssh/forgejo_mirror
+forgejo_mirror_known_hosts: /home/agent/.ssh/known_hosts_forgejo
+forgejo_mirror_log: /home/agent/.cache/forgejo-mirror.log
+forgejo_mirror_ssh: >-
+  ssh -i {{ forgejo_mirror_key }} -o IdentitiesOnly=yes -o BatchMode=yes
+  -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ forgejo_mirror_known_hosts }}
+# Runner de despliegue: entra directo al puerto web de Forgejo (sin Authelia,
+# que es para navegador). Ver docs/despliegue.md.
+forgejo_api_directa: "http://192.0.2.235:3000/api/v1"
+
+# Despliegue continuo de la web personal (runner landing-despliegue de este
+# CT, roles/forgejo/tasks/landing_cd_*.yml). Ver docs/landing.md.
+landing_cd_repo: "ssh://git@192.0.2.235:2222/tito/landing.git"
+landing_cd_github: "git@github.com:Tito-Pinardo/landing.git"
+# Control de fugas antes de que nada salga a GitHub o a la web (landing-fugas):
+# la unica identidad que firma commits publicos y lo que nunca puede aparecer.
+landing_fugas_identidad: "Tito-Pinardo <Tito-Pinardo@users.noreply.github.com>"
+landing_fugas_patron: '192\.168\.|10\.8\.0|\.home\.lan|lucifer|dockge|vault_'
+
+# Renovate (docs/renovate.md): corre en el runner de despliegue con su propio
+# Node 24 (el del sistema, 22, es el de Codeman). Suma de SHASUMS256.txt de
+# nodejs.org.
+renovate_version: "44.126.0"
+renovate_node_version: "24.21.0"
+renovate_node_sha256: "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"

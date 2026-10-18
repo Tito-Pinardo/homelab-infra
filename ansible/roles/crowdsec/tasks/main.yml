@@ -1,0 +1,143 @@
+---
+# CrowdSec en el CT de Traefik: lee su log de acceso y el SSH del CT, decide
+# a quien bloquear y el plugin de Traefik aplica las decisiones. Detalle en
+# docs/crowdsec.md.
+
+- name: Clave del repositorio de CrowdSec
+  ansible.builtin.copy:
+    src: crowdsec.asc
+    dest: /usr/share/keyrings/crowdsec.asc
+    mode: "0644"
+
+- name: Repositorio de CrowdSec
+  ansible.builtin.template:
+    src: crowdsec.sources.j2
+    dest: /etc/apt/sources.list.d/crowdsec.sources
+    mode: "0644"
+  register: crowdsec_repo
+
+- name: Actualizar la cache de apt tras cambiar el repositorio
+  ansible.builtin.apt:
+    update_cache: true
+  when: crowdsec_repo.changed  # noqa: no-handler
+
+- name: Instalar CrowdSec (y dig para ip-casa)
+  ansible.builtin.apt:
+    name: [crowdsec, dnsutils]
+    state: present
+
+# En modo plan (--check) CrowdSec aun no esta instalado la primera vez: lo que
+# usa cscli se salta.
+- name: Comprobar si cscli esta disponible
+  ansible.builtin.stat:
+    path: /usr/bin/cscli
+  register: crowdsec_cscli
+
+- name: Fuentes de logs (Traefik y SSH)
+  ansible.builtin.template:
+    src: "acquis-{{ item }}.yaml.j2"
+    dest: "/etc/crowdsec/acquis.d/{{ item }}.yaml"
+    mode: "0644"
+  loop: [traefik, sshd]
+  when: crowdsec_cscli.stat.exists
+  notify: Recargar crowdsec
+
+- name: Colecciones de deteccion instaladas
+  ansible.builtin.command: cscli collections list -o json
+  register: crowdsec_colecciones
+  changed_when: false
+  check_mode: false
+  when: crowdsec_cscli.stat.exists
+
+- name: Instalar las colecciones que falten
+  ansible.builtin.command: "cscli collections install {{ item }}"
+  loop: "{{ crowdsec_colecciones_lista }}"
+  when:
+    - crowdsec_cscli.stat.exists
+    - item not in (crowdsec_colecciones.stdout | from_json).collections | map(attribute='name') | list
+  changed_when: true
+  notify: Recargar crowdsec
+
+# ------------------------------------------------- lista blanca de casa
+
+- name: Script de la IP publica de casa
+  ansible.builtin.template:
+    src: ip-casa.j2
+    dest: /usr/local/sbin/ip-casa
+    mode: "0755"
+
+- name: Servicio y temporizador de ip-casa
+  ansible.builtin.template:
+    src: "ip-casa.{{ item }}.j2"
+    dest: "/etc/systemd/system/ip-casa.{{ item }}"
+    mode: "0644"
+  loop: [service, timer]
+  register: crowdsec_ip_casa_unidades
+
+- name: Activar ip-casa
+  ansible.builtin.systemd:
+    name: ip-casa.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  # En el plan, la unidad aun no existe la primera vez.
+  when: not (ansible_check_mode and crowdsec_ip_casa_unidades.changed)
+
+# ------------------------------------------------- bouncer de Traefik
+
+# La clave solo vive en el CT: la genera cscli y Traefik la lee del fichero.
+# Si falta el fichero, se rehace el bouncer.
+- name: Clave del bouncer de Traefik
+  ansible.builtin.shell: |
+    set -eu
+    mkdir -p /etc/traefik
+    umask 077
+    cscli bouncers delete traefik >/dev/null 2>&1 || true
+    cscli bouncers add traefik -o raw > /etc/traefik/crowdsec-lapi.key
+  args:
+    creates: /etc/traefik/crowdsec-lapi.key
+  when: crowdsec_cscli.stat.exists
+
+# ------------------------------------------------- resumen diario
+
+- name: Carpeta de los avisos
+  ansible.builtin.file:
+    path: /etc/crowdsec-avisos
+    state: directory
+    mode: "0700"
+
+- name: Datos del relay de Element
+  ansible.builtin.template:
+    src: matrix.env.j2
+    dest: /etc/crowdsec-avisos/matrix.env
+    mode: "0600"
+  no_log: true
+
+- name: Script del resumen diario
+  ansible.builtin.template:
+    src: crowdsec-resumen.py.j2
+    dest: /usr/local/sbin/crowdsec-resumen
+    mode: "0755"
+
+- name: Servicio y temporizador del resumen
+  ansible.builtin.template:
+    src: "crowdsec-resumen.{{ item }}.j2"
+    dest: "/etc/systemd/system/crowdsec-resumen.{{ item }}"
+    mode: "0644"
+  loop: [service, timer]
+  register: crowdsec_resumen_unidades
+
+- name: Activar el resumen diario
+  ansible.builtin.systemd:
+    name: crowdsec-resumen.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not (ansible_check_mode and crowdsec_resumen_unidades.changed)
+
+- name: CrowdSec arrancado
+  ansible.builtin.systemd:
+    name: crowdsec
+    enabled: true
+    state: started
+  when: crowdsec_cscli.stat.exists

@@ -1,12 +1,17 @@
-# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
-# y cifrar con: ansible-vault encrypt vault.yml
-vault_arr_gluetun_control_password: CHANGEME
-vault_arr_prowlarr_api_key: CHANGEME
-vault_arr_qbittorrent_user: CHANGEME
-vault_arr_qbittorrent_password: CHANGEME
-vault_arr_gluetun_control_user: CHANGEME
-vault_arr_radarr_api_key: CHANGEME
-vault_arr_sonarr_api_key: CHANGEME
-vault_arr_wireguard_private_key: CHANGEME
-vault_zabbix_psk: CHANGEME
-vault_wazuh_client_keys_line: CHANGEME
+# Secretos del grupo: en OpenBao (infra-tf/grupos/arr_stack), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_arr_gluetun_control_password: "CAMBIAR"
+vault_arr_prowlarr_api_key: "CAMBIAR"
+vault_arr_qbittorrent_password: "CAMBIAR"
+vault_arr_radarr_api_key: "CAMBIAR"
+vault_arr_sonarr_api_key: "CAMBIAR"
+vault_arr_wireguard_private_key: "CAMBIAR"
+vault_oidc_forgejo_hash: "CAMBIAR"
+vault_oidc_forgejo_secreto: "CAMBIAR"
+vault_oidc_openbao_hash: "CAMBIAR"
+vault_oidc_openbao_secreto: "CAMBIAR"
+vault_oidc_pbs_hash: "CAMBIAR"
+vault_oidc_pbs_secreto: "CAMBIAR"
+vault_oidc_proxmox_hash: "CAMBIAR"
+vault_oidc_proxmox_secreto: "CAMBIAR"

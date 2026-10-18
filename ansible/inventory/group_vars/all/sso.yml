@@ -1,0 +1,25 @@
+---
+# Inicio de sesion unico con Authelia (OIDC, docs/sso.md). Los secretos de
+# cada cliente estan en group_vars/arr_stack/vault.yml (vault_oidc_*).
+sso_emisor: "https://auth.home.arpa"
+sso_usuario: tito          # usuario de Authelia que administra
+sso_grupo_admin: admins    # grupo de Authelia que exige Forgejo
+sso_clientes:
+  forgejo:
+    nombre: Forgejo
+    redirecciones: ["https://git.home.arpa/user/oauth2/authelia/callback"]
+    scopes: [openid, email, profile, groups]
+  proxmox:
+    nombre: Proxmox VE
+    redirecciones: ["https://192.0.2.2:8006"]
+    scopes: [openid, email, profile]
+  openbao:
+    nombre: OpenBao
+    redirecciones:
+      - "https://bao.home.arpa/ui/vault/auth/oidc/oidc/callback"
+      - "http://localhost:8250/oidc/callback"
+    scopes: [openid, email, profile, groups]
+  pbs:
+    nombre: Proxmox Backup Server
+    redirecciones: ["https://192.0.2.233:8007"]
+    scopes: [openid, email, profile]

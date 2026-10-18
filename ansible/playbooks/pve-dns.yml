@@ -1,0 +1,91 @@
+---
+# DNS del host Proxmox y de los CT que lo heredan -> Technitium (CT 120).
+#
+# Por que (2026-10-10): el host tenia 1.1.1.1 / 8.8.8.8 / 1.0.0.1 en
+# /etc/resolv.conf y 16 de los 18 CT lo heredan (sin 'nameserver' propio), asi
+# que todas sus consultas salian por el 53 sin cifrar y sin la cache de
+# Technitium. Technitium reenvia por DNS-over-HTTPS a Cloudflare.
+#
+# 1.1.1.1 queda de respaldo, sin cifrar, solo para cuando Technitium no
+# responde: tras un corte de luz el host tarda mas de 1 h en arrancar (checks
+# de disco) y Technitium es un CT de este mismo host. Por eso tambien arranca
+# el primero (startup order=1).
+#
+# Decision mia: NO redirigir/bloquear el 53 en el router, para poder
+# pasar un PC a DNS manual si el servidor esta caido.
+#
+# Proxmox reescribe el bloque "# --- BEGIN PVE ---" del resolv.conf de cada CT
+# al arrancarlo con el DNS del host; los CT encendidos se actualizan aqui para
+# no tener que reiniciarlos. Los contenedores Docker de dentro toman el DNS
+# nuevo cuando se recrean o reinician.
+#
+# Para revertir: restaurar /etc/resolv.conf desde la copia
+# /etc/resolv.conf.*~ que deja este playbook, reiniciar los CT (o volver a
+# lanzar el bloque de actualizacion) y 'pct set 120 --delete startup'.
+
+- name: Host Proxmox
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox al inventario de esta ejecucion
+      ansible.builtin.add_host:
+        name: pve
+        ansible_host: 192.0.2.2
+        ansible_user: root
+        groups: pve_dynamic
+
+- name: DNS del host y de los CT que lo heredan
+  hosts: pve_dynamic
+  gather_facts: false
+  vars:
+    pve_dns_servers:
+      - 192.0.2.45   # Technitium (CT 120): DoH a Cloudflare + cache
+      - 1.1.1.1        # respaldo si Technitium no responde
+    pve_dns_search: local
+    pve_dns_ct: 120
+  tasks:
+    - name: resolv.conf del host
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        backup: true
+        mode: "0644"
+        content: |
+          # Gestionado por infra-tf (playbooks/pve-dns.yml).
+          search {{ pve_dns_search }}
+          {% for ns in pve_dns_servers %}
+          nameserver {{ ns }}
+          {% endfor %}
+          options timeout:2 attempts:2
+
+    - name: Technitium arranca el primero tras un reinicio del host
+      ansible.builtin.shell: |
+        pct config {{ pve_dns_ct }} | grep -qx 'startup: order=1' && exit 0
+        pct set {{ pve_dns_ct }} --startup order=1 && echo cambiado
+      register: pve_dns_order
+      changed_when: "'cambiado' in pve_dns_order.stdout"
+
+    - name: Actualizar el bloque PVE del resolv.conf de los CT encendidos que heredan el DNS
+      ansible.builtin.shell: |
+        set -eu
+        want="$(printf '# --- BEGIN PVE ---\nsearch %s\n' '{{ pve_dns_search }}'; for ns in {{ pve_dns_servers | join(' ') }}; do printf 'nameserver %s\n' "$ns"; done; printf '# --- END PVE ---')"
+        for id in $(pct list | awk 'NR>1 && $2=="running" {print $1}'); do
+          pct config "$id" | grep -q '^nameserver:' && continue
+          pct exec "$id" -- test -e /etc/.pve-ignore.resolv.conf && continue
+          cur="$(pct exec "$id" -- cat /etc/resolv.conf)"
+          printf '%s\n' "$cur" | grep -q '^# --- BEGIN PVE ---$' || continue
+          new="$(printf '%s\n' "$cur" | awk -v want="$want" '
+            /^# --- BEGIN PVE ---$/ {print want; skip=1; next}
+            /^# --- END PVE ---$/ {skip=0; next}
+            !skip {print}')"
+          [ "$new" = "$cur" ] && continue
+          printf '%s\n' "$new" | pct exec "$id" -- sh -c 'cat > /etc/resolv.conf'
+          echo "actualizado CT $id"
+        done
+      args:
+        executable: /bin/bash
+      register: pve_dns_cts
+      changed_when: "'actualizado' in pve_dns_cts.stdout"
+
+    - name: CT actualizados
+      ansible.builtin.debug:
+        var: pve_dns_cts.stdout_lines

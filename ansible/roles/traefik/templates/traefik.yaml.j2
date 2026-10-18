@@ -3,19 +3,47 @@ providers:
     directory: /etc/traefik/conf.d/
     watch: true
 
+{# Cloudflare va delante: Traefik solo se fia de su X-Forwarded-For (asi el
+   log y los servicios ven la IP real). Una conexion directa de otro origen
+   llega sin esa cabecera y se ve con su propia IP. #}
+{# Con crowdsec_bloquear, el bouncer de CrowdSec va en todas las rutas. #}
+{% set bloquear = traefik_crowdsec | default(false) and crowdsec_bloquear | default(false) %}
 entryPoints:
   web:
     address: ':80'
+{% if traefik_ips_confiables | default([]) %}
+    forwardedHeaders:
+      trustedIPs: {{ traefik_ips_confiables | to_json }}
+{% endif %}
     http:
+{% if bloquear %}
+      middlewares: [crowdsec@file]
+{% endif %}
       redirections:
         entryPoint:
           to: websecure
           scheme: https
   websecure:
     address: ':443'
+{% if traefik_ips_confiables | default([]) %}
+    forwardedHeaders:
+      trustedIPs: {{ traefik_ips_confiables | to_json }}
+{% endif %}
     http:
+{% if bloquear %}
+      middlewares: [crowdsec@file]
+{% endif %}
       tls:
         certResolver: letsencrypt
+{% if traefik_crowdsec | default(false) %}
+
+{# Plugin cargado del disco (plugins-local, relativo a WorkingDirectory): sin
+   descargas de plugins.traefik.io al arrancar. #}
+experimental:
+  localPlugins:
+    crowdsec:
+      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+{% endif %}
 
 api:
   dashboard: true

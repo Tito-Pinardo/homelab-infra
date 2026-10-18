@@ -1,4 +1,5 @@
-# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
-# y cifrar con: ansible-vault encrypt vault.yml
-vault_zabbix_psk: CHANGEME
-vault_wazuh_client_keys_line: CHANGEME
+# Secretos del grupo: en OpenBao (infra-tf/grupos/homepage_web), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

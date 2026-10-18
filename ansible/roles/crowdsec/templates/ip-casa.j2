@@ -1,0 +1,16 @@
+#!/bin/sh
+# Gestionado por Ansible (rol crowdsec). Pone la IP publica de casa en lista
+# blanca: lo que se pide desde casa a los dominios publicos entra por
+# Cloudflare con esa IP y no debe acabar bloqueado. Es dinamica: cada hora.
+set -eu
+F=/etc/crowdsec/parsers/s02-enrich/ip-casa.yaml
+ip=$(dig +short +time=5 txt ch whoami.cloudflare @1.1.1.1 | tr -d '"')
+case "$ip" in
+  *[!0-9.]*|"") echo "IP publica no valida: '$ip'" >&2; exit 1 ;;
+esac
+nuevo=$(printf 'name: casa/ip-publica\ndescription: "IP publica de casa (ip-casa.timer)"\nwhitelist:\n  reason: "IP publica de casa"\n  ip:\n    - "%s"\n' "$ip")
+if [ "$(cat "$F" 2>/dev/null)" != "$nuevo" ]; then
+  printf '%s\n' "$nuevo" > "$F"
+  systemctl reload crowdsec
+  echo "lista blanca: $ip"
+fi

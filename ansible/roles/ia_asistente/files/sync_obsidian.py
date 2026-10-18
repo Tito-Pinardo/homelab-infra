@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Sincroniza mis notas de Obsidian y las sube a Qdrant como embeddings, en
-solo lectura.
+"""
+Sincroniza el vault de Obsidian (192.0.2.243, fuera de este CT) y sube sus
+notas a Qdrant como embeddings - conector de solo lectura para el asistente
+IA (ver runbook "Asistente IA + base semantica" en Obsidian).
 
-Uso una copia periodica en vez de vigilar cambios: un retraso de unos
-minutos no importa aqui. Guardo un hash por nota para subir solo lo que
-cambia.
+Por que rsync periodico y no un watch de filesystem: el vault vive en OTRO
+host (dockge, 192.0.2.243), un inotify remoto por SSH exige mantener una
+conexion persistente y reconexion robusta - complejidad innecesaria para un
+asistente personal donde un retraso de hasta 15 min es irrelevante.
+
+Idempotencia: se guarda un hash por nota en obsidian_state.json - solo se
+vuelve a generar el embedding (llamada cara a Ollama) de lo que cambio de
+verdad desde la ultima pasada. Las notas borradas en origen tambien se
+borran de Qdrant (si no, quedarian respuestas fantasma de notas que ya no
+existen).
 """
 import hashlib
 import json
@@ -17,8 +26,8 @@ from pathlib import Path
 
 import requests
 
-VAULT_HOST = "192.0.2.24"
-# Ruta relativa a la raiz que fija el servidor para esta clave.
+VAULT_HOST = "192.0.2.243"
+# rrsync fuerza /opt/stacks/obsidian/vault en el servidor; ruta relativa a esa raíz.
 VAULT_REMOTE_PATH = "./"
 SSH_KEY = "/var/lib/obsidian-sync/.ssh/id_ed25519"
 
@@ -32,8 +41,9 @@ QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
 COLLECTION = "obsidian_vault"
 VECTOR_SIZE = 768
 
-# Namespace fijo para generar IDs deterministas: volver a subir una nota sin
-# cambios no crea duplicados.
+# Namespace fijo para generar IDs de punto deterministas (path+chunk ->
+# mismo UUID siempre) - asi re-subir una nota sin cambios es un no-op real
+# en Qdrant (mismo ID, mismo vector) en vez de crear puntos duplicados.
 POINT_NAMESPACE = uuid.UUID("6f6d6272-6165-6465-6461-746f732e6961")
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)")
@@ -41,77 +51,79 @@ HEADING_RE = re.compile(r"^#{1,2}\s+(.+)$", re.MULTILINE)
 
 
 def sync_vault_files():
-    """Trae una copia local actualizada de las notas."""
     ...
 
 
 def load_state() -> dict:
-    """Devuelve el estado de la ultima sincronizacion."""
     ...
 
 
 def save_state(state: dict):
-    """Guarda el estado de la sincronizacion."""
     ...
 
 
 def file_hash(content: str) -> str:
-    """Devuelve el hash del contenido de una nota."""
     ...
 
 
 def extract_title(rel_path: str, content: str) -> str:
-    """Devuelve el titulo de una nota."""
     ...
 
 
-# El limite real es el tamano de lote fisico de llama.cpp (2048 tokens), que
-# Ollama no deja cambiar. Con fragmentos de 1500 caracteres nunca se alcanza.
+# El limite real no es el context length (num_ctx) sino el "physical batch
+# size" de llama.cpp (2048 tokens), que Ollama NO deja overridear ni por
+# OLLAMA_CONTEXT_LENGTH ni por "options.num_ctx" en el request - probados
+# ambos el 2026-09-16 y los dos fallaron con el mismo error real ("input
+# too large to process... current batch size: 2048"). Unico fix fiable:
+# no generar chunks que puedan acercarse a ese limite. 1500 caracteres es
+# imposible que pasen de 1500 tokens (un token nunca es menos de 1 caracter).
 MAX_CHUNK_CHARS = 1500
 
 
 def _split_by_size(text: str, max_len: int) -> list[str]:
-    """Trocea un texto en fragmentos de tamano limitado."""
+    """Garantiza que NINGUN chunk resultante supere max_len, pase lo que
+    pase. Bug real (2026-09-16): partir solo por "\n\n" no hace nada si la
+    nota no tiene lineas en blanco (tablas, bloques de codigo, listas
+    densas) - el chunk entero se colaba entero de todos modos. Ahora se
+    prueba en cascada por separadores cada vez mas finos, y como ultimo
+    recurso absoluto se trocea por caracteres sin mirar nada."""
     ...
 
 
 def chunk_note(content: str) -> list[str]:
-    """Divide una nota en fragmentos para indexarla."""
+    """Una nota pequena = un solo chunk. Si tiene varios encabezados y es
+    larga, se parte por encabezado para no diluir el embedding de una nota
+    que en realidad cubre varios temas. Cualquier chunk resultante que siga
+    siendo demasiado largo se parte ademas por parrafos (limite duro del
+    modelo de embeddings)."""
     ...
 
 
 def embed(text: str) -> list[float]:
-    """Calcula el vector de embedding de un texto."""
     ...
 
 
 def qdrant_headers() -> dict:
-    """Devuelve las cabeceras para llamar a Qdrant."""
     ...
 
 
 def ensure_collection():
-    """Crea la coleccion de notas en Qdrant si no existe."""
     ...
 
 
 def point_id(rel_path: str, chunk_index: int) -> str:
-    """Devuelve un identificador estable para un fragmento de una nota."""
     ...
 
 
 def upsert_points(points: list[dict]):
-    """Inserta o actualiza fragmentos en la coleccion de notas."""
     ...
 
 
 def delete_points(ids: list[str]):
-    """Borra fragmentos de la coleccion de notas."""
     ...
 
 
 def main():
-    """Sincroniza las notas con el indice: anade las nuevas o cambiadas y quita las borradas."""
     ...
 
 

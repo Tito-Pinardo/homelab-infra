@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate de infra-tf (Forgejo, runner despliegue del CT 123). Ver docs/renovate.md.",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Madrid",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate: actualizaciones pendientes",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 0,
+  "enabledManagers": ["custom.regex", "terraform"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versiones fijadas en group_vars con un comentario '# renovate: datasource=... depName=...' encima",
+      "managerFilePatterns": ["/^ansible/inventory/group_vars/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)( registryUrl=(?<registryUrl>\\S+))?( extractVersion=(?<extractVersion>\\S+))?\\s*\\n[a-z_]+: \"?(?<currentValue>[^\"\\s]+)\"?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Imagenes Docker con version fijada en las plantillas de los roles (las :latest las actualiza update-containers.yml)",
+      "managerFilePatterns": ["/^ansible/roles/.+\\.(j2|ya?ml)$/"],
+      "matchStrings": ["image: \"?(?<depName>[a-z0-9][a-z0-9./_-]+):(?<currentValue>v?[0-9][^\\s\"]*)\"?"],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "terraform": {
+    "rangeStrategy": "update-lockfile"
+  },
+  "packageRules": [
+    {
+      "description": "Forgejo: solo la rama LTS 15.x",
+      "matchDepNames": ["forgejo/forgejo"],
+      "allowedVersions": "/^15\\./"
+    },
+    {
+      "description": "Bases de datos: subir de major exige migrar datos, a mano",
+      "matchDepNames": ["docker.io/library/postgres", "docker.io/library/redis"],
+      "enabled": false
+    },
+    {
+      "description": "Las major necesitan aprobacion en el issue de Renovate antes de abrir PR",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Mismo Terraform en el CI y en el CT 123: un solo PR",
+      "matchDepNames": ["hashicorp/terraform"],
+      "groupName": "Terraform CLI"
+    },
+    {
+      "description": "Trivy: 14 dias antes de proponer una version (en marzo de 2026 se publico una version comprometida)",
+      "matchDepNames": ["aquasec/trivy"],
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "Mismo ansible-core en el CI y en el CT 123: un solo PR",
+      "matchDepNames": ["ansible-core"],
+      "groupName": "ansible-core"
+    }
+  ],
+  "postUpgradeTasks": {
+    "commands": ["python3 scripts/renovate/sumas.py"],
+    "fileFilters": ["ansible/inventory/group_vars/**"],
+    "executionMode": "branch"
+  }
+}

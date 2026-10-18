@@ -1,0 +1,20 @@
+# CT 128 "openbao" - llaves maestras de infra-tf. Ver lxc-openbao.tf y
+# docs/openbao.md.
+
+# Al actualizar, version y sumas de checksums.txt de la release.
+# renovate: datasource=docker depName=openbao/openbao
+openbao_version: "2.7.1"
+openbao_deb_sha256: "aa5dd78f590a89256dffae7c7f8664b11e4380478da86454d8030020f6af0add"
+openbao_targz_sha256: "0e2f1ce10d124e03112b50dd2fbec6b78003783253bc3a91587938f39d1e2243"
+
+openbao_puerto: 8200
+openbao_dominio: "bao.home.arpa"
+openbao_addr: "https://{{ hostvars['openbao'].ansible_host }}:{{ openbao_puerto }}"
+
+# Unicos que llegan a la API: el CT 123 (despliegue y agentes), Caddy (la
+# web, para desellar) y la administracion por CLI.
+openbao_origenes_api: []  # se define en el inventario privado
+openbao_ssh_allowed_sources: []  # se define en el inventario privado
+
+# Ruta del certificado en el Caddy de dockge (mismo sitio que el de Technitium).
+openbao_ca_en_caddy: /opt/stacks/arr/proxy/caddy_config/monitoring-cas/openbao-ca.pem

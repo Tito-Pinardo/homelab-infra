@@ -1,8 +1,13 @@
 ---
-# AMP (CubeCoders Application Management Panel).
+# AMP (CubeCoders Application Management Panel), sustituye al CT 108.
+# Detalle completo (arquitectura, bug de timeout conocido, UFW
+# auto-sincronizado) en el runbook de Obsidian.
 #
-# Este rol nunca toca /home/amp/.ampdata (usuarios, 2FA, instancias) ni los
-# datos de los juegos: son estado de AMP y se restauran aparte.
+# Este role NUNCA toca /home/amp/.ampdata (usuarios/roles/2FA/instancias) -
+# es estado de AMP, copiado 1:1 desde el CT108 original en un paso manual
+# aparte (igual que /etc/dns en Technitium o la BD de Paperless). Tampoco
+# toca los datos de juego (/mnt/minecraft, /mnt/steam) - son bind-mounts
+# ZFS ya poblados, ver lxc-amp.tf.
 
 - name: Instalar dependencias basicas
   ansible.builtin.apt:
@@ -24,10 +29,15 @@
     mode: "0644"
 
 - name: Anadir el repositorio apt de Docker
-  ansible.builtin.apt_repository:
-    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    architectures: amd64
+    signed_by: /etc/apt/keyrings/docker.asc
+    uris: https://download.docker.com/linux/debian
+    suites: "{{ ansible_distribution_release }}"
+    components: stable
     state: present
-    filename: docker
 
 - name: Instalar Docker Engine + plugin compose
   ansible.builtin.apt:
@@ -53,10 +63,13 @@
     mode: "0644"
 
 - name: Anadir el repositorio apt de CubeCoders (ampinstmgr)
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/cdn-repo.c7rs.com.gpg] https://cdn-repo.c7rs.com/ debian/"
+  ansible.builtin.deb822_repository:
+    name: cubecoders
+    types: deb
+    signed_by: /usr/share/keyrings/cdn-repo.c7rs.com.gpg
+    uris: https://cdn-repo.c7rs.com/
+    suites: debian/
     state: present
-    filename: cdn-repo.c7rs.com
 
 - name: Instalar ampinstmgr (crea el usuario 'amp', /opt/cubecoders/amp, y las unidades systemd base)
   ansible.builtin.apt:
@@ -71,10 +84,14 @@
     mode: "0755"
 
 - name: Override de systemd para ampinstmgr.service (TimeoutStartSec=600)
-  # Mitigacion de un fallo conocido: al arrancar, ampinstmgr descarga las
-  # imagenes base de cada instancia con Start on Boot y tras un reinicio puede
-  # superar el timeout de systemd. El pre-pull de imagenes evita la descarga
-  # durante el arranque y aqui amplio el timeout.
+  # Mitigacion de un bug real y recurrente (4 incidencias documentadas,
+  # 07/07, 14/07, 08/07, 14/08 2026): el arranque de ampinstmgr hace
+  # 'docker pull' de las imagenes base de cada instancia con Start on Boot,
+  # y en el primer arranque tras un reboot esto puede superar el timeout
+  # por defecto de systemd compitiendo por I/O. El pre-pull de imagenes de
+  # abajo ataca la causa (evita el pull en si durante el arranque real);
+  # este override es la mitigacion que ya existia en el CT108 original,
+  # se mantiene como segunda red de seguridad.
   ansible.builtin.copy:
     dest: /etc/systemd/system/ampinstmgr.service.d/override.conf
     content: |
@@ -117,6 +134,9 @@
     dest: /etc/ufw/before.rules
     mode: "0640"
   notify: recargar ufw
+
+- name: Arranque de ufw siempre desde cero (drop-in y limpieza)
+  ansible.builtin.include_tasks: ufw.yml
 
 - name: Desplegar before6.rules de UFW (misma restriccion, IPv6)
   ansible.builtin.template:
@@ -186,11 +206,11 @@
     src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
   register: amp_fw_current
   failed_when: false
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
 
 - name: Escribir el firewall propio del CT (solo 3 reglas de SSH)
   ansible.builtin.shell:
@@ -199,8 +219,55 @@
   when: >
     not amp_fw_current.content is defined or
     (amp_fw_current.content | default('') | b64decode) != amp_fw_content
-  delegate_to: 192.0.2.10
+  delegate_to: 192.0.2.2
   vars:
     ansible_connection: ssh
     ansible_user: root
-    ansible_host: 192.0.2.10
+    ansible_host: 192.0.2.2
+
+- name: Descargar la clave GPG de Adoptium (Eclipse Temurin para Java)
+  ansible.builtin.get_url:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    dest: /etc/apt/keyrings/adoptium.asc
+    mode: "0644"
+
+- name: Anadir el repositorio apt de Adoptium
+  ansible.builtin.deb822_repository:
+    name: adoptium
+    types: deb
+    signed_by: /etc/apt/keyrings/adoptium.asc
+    uris: https://packages.adoptium.net/artifactory/deb
+    suites: "{{ ansible_distribution_release }}"
+    components: main
+    state: present
+
+- name: Instalar Java 21 y Java 25 de forma nativa
+  ansible.builtin.apt:
+    name:
+      - temurin-21-jdk
+      - temurin-25-jdk
+    state: present
+    update_cache: true
+
+- name: GraalVM ya instalados
+  ansible.builtin.find:
+    paths: /usr/lib/jvm
+    patterns: "graalvm-jdk-*"
+    file_type: directory
+  register: amp_graalvm
+
+- name: Descargar e instalar Oracle GraalVM para Java 21
+  ansible.builtin.unarchive:
+    src: "https://download.oracle.com/graalvm/21/latest/graalvm-jdk-21_linux-x64_bin.tar.gz"
+    dest: /usr/lib/jvm/
+    remote_src: true
+  # "latest" no deja usar creates con la ruta exacta: se instala solo si no hay ninguna.
+  when: not (amp_graalvm.files | selectattr('path', 'search', 'graalvm-jdk-21') | list)
+
+- name: Descargar e instalar Oracle GraalVM para Java 25 (LTS)
+  ansible.builtin.unarchive:
+    src: "https://download.oracle.com/graalvm/25/latest/graalvm-jdk-25_linux-x64_bin.tar.gz"
+    dest: /usr/lib/jvm/
+    remote_src: true
+  # "latest" no deja usar creates con la ruta exacta: se instala solo si no hay ninguna.
+  when: not (amp_graalvm.files | selectattr('path', 'search', 'graalvm-jdk-25') | list)

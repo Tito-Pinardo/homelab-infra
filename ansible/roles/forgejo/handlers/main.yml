@@ -1,0 +1,24 @@
+---
+- name: Reiniciar forgejo
+  ansible.builtin.systemd:
+    name: forgejo
+    state: restarted
+    daemon_reload: true
+
+- name: Reiniciar ci-avisos
+  ansible.builtin.systemd:
+    name: ci-avisos
+    state: restarted
+    daemon_reload: true
+
+- name: Reiniciar el runner de despliegue
+  ansible.builtin.systemd:
+    name: forgejo-runner-despliegue
+    state: restarted
+    daemon_reload: true
+
+- name: Reiniciar el runner de la web
+  ansible.builtin.systemd:
+    name: forgejo-runner-landing
+    state: restarted
+    daemon_reload: true

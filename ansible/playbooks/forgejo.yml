@@ -1,0 +1,141 @@
+---
+# Forgejo (CT 126, origen de infra-tf y de la web) + runner del CI (CT 127) + repo
+# central del CT 123 como copia de solo lectura + git.home.arpa en Caddy +
+# copias en PBS (playbooks/pbs.yml).
+# Ver docs/forgejo.md.
+#   ansible-playbook playbooks/forgejo.yml
+
+- name: Clave del mirror en el CT 123
+  hosts: agents
+  gather_facts: false
+  # El playbook se lanza desde el propio CT 123 (nodo de control), como el
+  # usuario agent, dueño del repo central.
+  connection: local
+  tasks:
+    - name: Clave SSH del mirror
+      community.crypto.openssh_keypair:
+        path: "{{ forgejo_mirror_key }}"
+        type: ed25519
+        comment: "mirror infra-tf CT 123 -> forgejo"
+      register: forgejo_mirror_keypair
+
+    # El checkout de agent empuja a Forgejo con su clave de siempre.
+    - name: Clave publica del usuario agent
+      ansible.builtin.slurp:
+        src: /home/agent/.ssh/id_ed25519.pub
+      register: forgejo_agent_pubkey
+
+- name: Forgejo
+  hosts: forgejo
+  become: true
+  # Con --limit forgejo el play del CT 123 no corre y estas claves no existen:
+  # entonces no se tocan (las que ya estan dadas de alta se quedan).
+  vars:
+    forgejo_mirror_pubkey: >-
+      {{ hostvars['agents'].forgejo_mirror_keypair.public_key
+         if hostvars['agents'].forgejo_mirror_keypair is defined else '' }}
+    forgejo_extra_ssh_keys: >-
+      {{ [{'title': 'agents (CT 123)', 'key': hostvars['agents'].forgejo_agent_pubkey.content | b64decode | trim}]
+         if hostvars['agents'].forgejo_agent_pubkey is defined else [] }}
+  roles:
+    - forgejo
+
+- name: Runner del CI
+  hosts: forgejo_runner
+  become: true
+  roles:
+    - forgejo_runner
+
+- name: Publicar git.home.arpa en el Caddy de dockge
+  hosts: arr_stack
+  become: true
+  tasks:
+    - name: Aplicar el Caddyfile sin reiniciar el stack
+      ansible.builtin.include_role:
+        name: arr_stack
+        tasks_from: caddy_recargar
+
+- name: Forgejo como origen y el repo central de solo lectura
+  hosts: agents
+  gather_facts: false
+  # El playbook se lanza desde el propio CT 123 (nodo de control), como el
+  # usuario agent, dueño del repo central.
+  connection: local
+  tasks:
+    - name: Origin, hook de rechazo y copia desde Forgejo
+      ansible.builtin.include_role:
+        name: forgejo
+        tasks_from: central
+
+- name: Host Proxmox
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox al inventario de esta ejecucion
+      ansible.builtin.add_host:
+        name: pve
+        ansible_host: 192.0.2.2
+        ansible_user: root
+        groups: pve_dynamic
+
+    # Root dentro del CT 123 via 'pct exec' en el host (como paperless):
+    # agent no tiene sudo y root no entra por SSH en ese CT.
+    - name: Anadir el CT 123 como root
+      ansible.builtin.add_host:
+        name: agents-root
+        ansible_host: 192.0.2.2
+        ansible_connection: community.proxmox.proxmox_pct_remote
+        ansible_user: root
+        proxmox_vmid: 123
+        ansible_python_interpreter: /usr/bin/python3
+        groups: agents_root_dynamic
+
+# Copias: el CT de Forgejo entra en la tarea diaria de PBS (playbooks/pbs.yml,
+# docs/copias.md). La copia suelta a lb2-copias se retiro el 15-10.
+
+- name: Runner de despliegue - binario y servicio
+  hosts: agents_root_dynamic
+  gather_facts: false
+  tasks:
+    - name: Binario, configuracion y unidad
+      ansible.builtin.include_role:
+        name: forgejo
+        tasks_from: despliegue_root
+
+    - name: Runner de la web - configuracion y unidad
+      ansible.builtin.include_role:
+        name: forgejo
+        tasks_from: landing_cd_root
+
+- name: Runner de despliegue - ficheros de agent
+  hosts: agents
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Estado, avisos, token y registro
+      ansible.builtin.include_role:
+        name: forgejo
+        tasks_from: despliegue_agent
+
+    - name: Despliegue continuo de la web - scripts y registro
+      ansible.builtin.include_role:
+        name: forgejo
+        tasks_from: landing_cd_agent
+
+- name: Runner de despliegue - arrancar
+  hosts: agents_root_dynamic
+  gather_facts: false
+  tasks:
+    - name: Arrancar el runner de despliegue
+      ansible.builtin.systemd:
+        name: forgejo-runner-despliegue
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Arrancar el runner de la web
+      ansible.builtin.systemd:
+        name: forgejo-runner-landing
+        state: started
+        enabled: true
+        daemon_reload: true

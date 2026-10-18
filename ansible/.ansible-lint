@@ -1,0 +1,11 @@
+# Configuracion de ansible-lint (la usa el CI de Forgejo, ver docs/forgejo.md).
+#
+# Los vault no se analizan: el CI no tiene la contraseña (a proposito) y su
+# unica comprobacion es que esten cifrados (scripts/ci/comprobar-vaults.sh).
+#
+# .ansible-lint-ignore guarda los avisos que ya habia el 14-10-2026 (108, casi
+# todos de estilo): el CI solo falla con avisos nuevos. Al arreglar uno, se
+# quita su linea de ese fichero.
+offline: true
+exclude_paths:
+  - inventory/group_vars/*/vault*.yml

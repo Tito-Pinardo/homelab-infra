@@ -15,10 +15,13 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-# SQLite en modo WAL: una conexion de solo lectura tambien necesita el
-# fichero -shm, asi que el directorio no puede ir en ReadOnlyPaths. La
-# garantia de no escribir la dan la apertura en modo solo lectura y
-# query_only.
+# SQLite en modo WAL: una conexion de SOLO LECTURA necesita igualmente el
+# fichero -shm (indice compartido). Con el directorio en ReadOnlyPaths
+# fallaba con "unable to open database file" siempre que no hubiera un
+# escritor vivo manteniendo ese -shm, asi que Hermes respondia "Demeter no
+# esta disponible" a intervalos, sin dejar rastro (2026-09-22).
+# La garantia de no escribir NO depende de esto: la conexion se abre con
+# mode=ro y PRAGMA query_only=ON, y el codigo solo hace SELECT.
 ReadWritePaths=/var/lib/demeter
 RestrictAddressFamilies=AF_UNIX
 MemoryMax=256M

@@ -1,6 +1,9 @@
-# Plantilla del vault de este grupo. Copiar a vault.yml, rellenar
-# y cifrar con: ansible-vault encrypt vault.yml
-vault_paperless_db_password: CHANGEME
-vault_paperless_secret_key: CHANGEME
-vault_zabbix_psk: CHANGEME
-vault_wazuh_client_keys_line: CHANGEME
+# Secretos del grupo: en OpenBao (infra-tf/grupos/paperless), los carga
+# vars_plugins/bao_secretos.py. Tambien vale un vault.yml con estos nombres.
+# Los valores reales viven en el inventario privado.
+vault_paperless_admin_password: "CAMBIAR"
+vault_paperless_admin_user: "CAMBIAR"
+vault_paperless_db_password: "CAMBIAR"
+vault_paperless_secret_key: "CAMBIAR"
+vault_wazuh_client_keys_line: "CAMBIAR"
+vault_zabbix_psk: "CAMBIAR"

@@ -1,7 +1,10 @@
 ---
 - name: Instalar y configurar Paperless-ngx (CT 119, documentos personales sensibles)
   hosts: paperless
-  # Sin become: el connection plugin proxmox_pct_remote ya ejecuta como root.
+  # SIN become: el connection plugin proxmox_pct_remote ya ejecuta como
+  # root directamente (ansible_user: root en hosts.yml) - pedir become
+  # aqui intentaria envolver los comandos en sudo dentro del pct exec,
+  # innecesario y no probado con este connection plugin.
   become: false
   roles:
     - paperless

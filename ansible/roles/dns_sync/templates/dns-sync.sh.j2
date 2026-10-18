@@ -1,8 +1,11 @@
 #!/bin/bash
-# Generado por Ansible (roles/dns_sync): no editar a mano, se sobrescribe.
-# Actualiza el registro A de cada dominio de dns_sync_domains con la IP
-# publica actual. El token llega desde el vault y el fichero se despliega con
-# permisos 0600.
+# Generado por Ansible (roles/dns_sync) - no editar a mano, se sobreescribe.
+# Sustituye a dns_a/c/d_update.sh del CT 105 "Scripts" (3 ficheros casi
+# identicos, cada uno con el token de Cloudflare repetido en texto plano) -
+# aqui es un solo bucle sobre dns_sync_domains, el token vive cifrado en el
+# vault e inyectado por Ansible, nunca en este fichero en claro... salvo que
+# aqui SI hace falta en texto plano para que el propio script pueda llamar a
+# la API - el fichero se despliega con permisos 0600, solo root lo lee.
 set -euo pipefail
 
 API_TOKEN="{{ dns_sync_cloudflare_token }}"

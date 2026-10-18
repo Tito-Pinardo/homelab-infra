@@ -1,0 +1,7 @@
+[Unit]
+Description=IP publica de casa en la lista blanca de CrowdSec (docs/crowdsec.md)
+After=crowdsec.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ip-casa

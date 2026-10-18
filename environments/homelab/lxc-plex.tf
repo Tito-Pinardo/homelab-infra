@@ -1,11 +1,33 @@
-# CT de Plex sin privilegios, con idmap y device_passthrough para usar la
-# GPU (NVENC) en el transcodificado.
+# lxc-plex.tf: sustituye al CT 100 "plex" - YA PROMOVIDO A DEFINITIVO
+# (2026-09-16, confirmado con clientes reales - TV transcodificando bien).
+# El CT 100 NO se destruye - se renombra a "plex-old" y se le retira la IP
+# .3 (movida a .8) para que pueda arrancarse de nuevo sin chocar con este,
+# pero se queda parado indefinidamente como red de seguridad real.
+#
+# Diferencia clave frente al CT 100 (privilegiado + lxc.mount.entry/cgroup2
+# a mano): este CT es SIN PRIVILEGIOS, con "idmap" + "device_passthrough"
+# (soportados de forma nativa por el provider) - mismo acceso real a la
+# GTX 1050 Ti, demostrado con un encode NVENC real en un CT de prueba
+# desechable (115, ya destruido) antes de tocar nada de Plex de verdad.
+# Menos superficie de ataque, mismo hardware transcoding.
+#
+# El GID 44 (grupo "video" del host) pasa 1:1 sin desplazar - por
+# coincidencia (o mas bien por diseño del propio Debian), TANTO los
+# dispositivos /dev/nvidia*/dri como las carpetas de medios
+# (/plex-server/lb*, root:video 2775) pertenecen a ese mismo grupo, y el
+# usuario "plex" que crea el propio .deb es miembro de "video" - el mismo
+# idmap resuelve el acceso a la GPU Y a los datos de biblioteca a la vez.
+#
+# device_passthrough NO se declara aqui - la API de Proxmox solo permite
+# configurarlo a root@pam (403 real, confirmado con el CT de prueba) y el
+# token de Terraform es una cuenta de servicio acotada a proposito. Se
+# aplica via `pct set` por SSH root tras crear el CT (ver runbook).
 
 resource "proxmox_virtual_environment_container" "plex" {
   node_name    = "main"
   vm_id        = 117
   unprivileged = true
-  description  = "Plex Media Server sin privilegios con acceso a la GPU. Gestionado por Terraform + Ansible."
+  description  = "Plex Media Server - servidor definitivo, sustituye al CT 100 (renombrado a plex-old, parado pero conservado como red de seguridad). Sin privilegios + idmap/device_passthrough para la GTX 1050 Ti (ver runbook). Gestionado por Terraform + Ansible, ver ~/infra-tf."
 
   initialization {
     hostname = "plex"
@@ -16,7 +38,7 @@ resource "proxmox_virtual_environment_container" "plex" {
 
     ip_config {
       ipv4 {
-        address = "192.0.2.11/24"
+        address = "192.0.2.3/24"
         gateway = "192.0.2.1"
       }
     }
@@ -48,8 +70,9 @@ resource "proxmox_virtual_environment_container" "plex" {
     nesting = true
   }
 
-  # El GID 44 (video, dueno de los dispositivos de la GPU y de las carpetas de
-  # medios) pasa 1:1; el resto del rango se desplaza como de costumbre.
+  # GID 44 (video, dueño de /dev/nvidia*+dri Y de las carpetas de medios)
+  # pasa 1:1 sin desplazar; el resto del rango se desplaza como de
+  # costumbre. Mismo esquema demostrado en el CT de prueba (115).
   idmap {
     type         = "gid"
     container_id = 0
@@ -75,20 +98,28 @@ resource "proxmox_virtual_environment_container" "plex" {
     size         = 65536
   }
 
-  # Las bibliotecas de medios (bind mounts del host) no se declaran aqui: la
-  # API de Proxmox restringe los mount points de tipo bind a root@pam. Se
-  # aplican con 'pct set' tras crear el CT.
+  # Las 10 bibliotecas de medios (bind mounts de directorios del host, mismas
+  # rutas que el CT 100 - ver `pct config 100`) NO se declaran aqui: la API
+  # de Proxmox tambien restringe "mount point type bind" a root@pam (403
+  # real, mismo motivo que device_passthrough). Se aplican via `pct set`
+  # por SSH root tras crear el CT - ver runbook.
 
-  # Imprescindible: sin esto, cualquier apply veria el passthrough y los mount
-  # points aplicados por fuera como diferencias e intentaria quitarlos, y en
-  # este provider eso recrea el CT entero.
+  # CRITICO: sin esto, cualquier `terraform apply` (incluso uno que solo
+  # toque hostname/IP) ve el device_passthrough/mount_point aplicados por
+  # fuera como "drift" respecto al vacio declarado aqui, e intenta
+  # eliminarlos - y eliminar esos bloques esta marcado ForceNew en este
+  # provider, o sea que INTENTA DESTRUIR Y RECREAR EL CT ENTERO (visto en
+  # real 2026-09-16, con Plex ya en produccion y streaming activo - se paro
+  # a tiempo revisando el plan antes de aplicar, nunca se llego a ejecutar).
   lifecycle {
-    ignore_changes = [device_passthrough, mount_point]
+    # RAM en caliente (docs/despliegue.md): el proveedor reinicia el CT al
+    # cambiarla; se cambia con pct set / la web y aqui queda como registro.
+    ignore_changes = [memory, device_passthrough, mount_point]
   }
 
   started = true
 }
 
 output "plex_ip" {
-  value = "192.0.2.11"
+  value = "192.0.2.3"
 }

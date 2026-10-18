@@ -1,0 +1,44 @@
+# Actualizaciones de mantenimiento sin terminal (runner "despliegue" del CT
+# 123). Ver docs/despliegue.md. Actions -> actualizar.yml -> Run workflow:
+#   - que: paquetes (update-all.yml), contenedores (update-containers.yml) o todo
+#   - equipos: "todos" o una lista (dockge,plex...); Paperless nunca entra
+#   - stacks: solo contenedores, opcional (seerr,tautulli...)
+# Resumen en la sala CI/CD de Element; log en ~/.infra-tf/actualizaciones/.
+name: Actualizar
+
+on:
+  workflow_dispatch:
+    inputs:
+      que:
+        description: "Que actualizar"
+        type: choice
+        options: [paquetes, contenedores, todo]
+        default: paquetes
+      equipos:
+        description: "Equipos (todos o lista separada por comas)"
+        type: string
+        default: todos
+      stacks:
+        description: "Solo contenedores: stacks (vacio = todos)"
+        type: string
+        default: ""
+
+env:
+  PY: /home/agent/.local/share/pipx/venvs/ansible-core/bin/python
+  ARBOL: /home/agent/.infra-tf/actualizar/infra-tf
+
+jobs:
+  actualizar:
+    runs-on: despliegue
+    steps:
+      - name: Copia del repo (master)
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin
+          git -C "$ARBOL" checkout -q -f --detach origin/master
+      - name: Actualizar
+        env:
+          QUE: ${{ inputs.que }}
+          EQUIPOS: ${{ inputs.equipos }}
+          STACKS: ${{ inputs.stacks }}
+        run: '"$PY" "$ARBOL/scripts/despliegue/actualizar.py" --que "$QUE" --equipos "$EQUIPOS" --stacks "$STACKS"'

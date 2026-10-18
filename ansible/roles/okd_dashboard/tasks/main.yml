@@ -24,7 +24,7 @@
         services.yaml: "{{ lookup('template', 'services.yaml.j2') }}"
         widgets.yaml: "{{ lookup('template', 'widgets.yaml.j2') }}"
         bookmarks.yaml: "{{ lookup('template', 'bookmarks.yaml.j2') }}"
-  register: configmap_result
+  register: okd_dashboard_configmap
 
 - name: Desplegar Homepage (Deployment)
   kubernetes.core.k8s:
@@ -49,7 +49,7 @@
               app: homepage
             annotations:
               # Fuerza un rollout cuando cambia la config, sin depender de latest+imagePullPolicy
-              config-hash: "{{ (configmap_result.result.data | default({})) | to_json | hash('sha1') }}"
+              config-hash: "{{ (okd_dashboard_configmap.result.data | default({})) | to_json | hash('sha1') }}"
           spec:
             # Homepage necesita /app/config totalmente escribible (genera ahí sus propios
             # ficheros skeleton la primera vez). La ConfigMap es de solo lectura, así que

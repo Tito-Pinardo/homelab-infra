@@ -63,15 +63,16 @@
     - demeter_tiendas.py
     - demeter_documents.py
     - demeter_web.py
-    - demeter_marketplace.py
+    - demeter_amazon.py
     - demeter_automation.py
     - demeter_queries.py
     - demeter_query_server.py
     - demeter_undo_server.py
 
 - name: Retirar bytecode antiguo de Demeter
-  # Un .pyc viejo puede sobrevivir a la copia de su .py (misma marca de tiempo
-  # al segundo) y dejar el servicio con codigo anterior.
+  # Un .pyc viejo puede sobrevivir a la copia de su .py (misma marca de
+  # tiempo al segundo) y dejar al servicio ejecutando codigo anterior: es lo
+  # que paso el 2026-09-22 con demeter_queries.py.
   ansible.builtin.file:
     path: /opt/demeter/__pycache__
     state: absent
@@ -201,8 +202,9 @@
     group: ia-bot
     mode: "0750"
     backup: true
-  # mensajes.py va con ia_bot.py: un despliegue solo de Demeter debe llevarlo
-  # tambien.
+  # mensajes.py va con ia_bot.py: sin el, un despliegue solo de Demeter dejo
+  # a ia_tools llamando a una funcion que en produccion no existia
+  # (2026-09-23, unos minutos, cazado comparando hashes).
   loop: [demeter_client.py, ia_tools.py, ia_bot.py, mensajes.py]
   register: demeter_hermes_code
 

@@ -1,0 +1,42 @@
+# Despliegue de master (runner "despliegue" del CT 123). Ver docs/despliegue.md.
+#
+# - Cada push a master (= cada PR fusionado): plan automatico, guardado en el
+#   CT 123 y resumido en Element. No cambia nada.
+# - Aplicar: a mano, Actions -> despliegue.yml -> Run workflow (rama master).
+#   Aplica EXACTAMENTE el plan guardado de la punta de master; si el estado
+#   cambio despues del plan, Terraform se niega.
+name: Despliegue
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  PY: /home/agent/.local/share/pipx/venvs/ansible-core/bin/python
+  ARBOL: /home/agent/.infra-tf/arbol
+
+jobs:
+  plan:
+    if: github.event_name == 'push'
+    runs-on: despliegue
+    steps:
+      - name: Checkout del despliegue
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git -C "$ARBOL" checkout -q -f --detach "${{ github.sha }}"
+      - name: Plan (Terraform + Ansible --check)
+        run: '"$PY" "$ARBOL/scripts/despliegue/despliegue.py" plan --sha "${{ github.sha }}"'
+
+  aplicar:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: despliegue
+    steps:
+      - name: Checkout del despliegue
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git -C "$ARBOL" checkout -q -f --detach "${{ github.sha }}"
+      - name: Aplicar el plan guardado
+        run: '"$PY" "$ARBOL/scripts/despliegue/despliegue.py" aplicar --sha "${{ github.sha }}"'

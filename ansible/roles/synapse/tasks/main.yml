@@ -15,7 +15,8 @@
     state: started
 
 - name: Crear usuario de base de datos para Synapse
-  # become_method: su porque la plantilla minima de Debian no trae sudo.
+  # become_method: su porque esta plantilla Debian minima no trae `sudo`
+  # instalado (y no hace falta instalarlo solo para este paso puntual).
   community.postgresql.postgresql_user:
     name: "{{ synapse_db_user }}"
     password: "{{ synapse_db_password }}"
@@ -24,8 +25,10 @@
   become_method: ansible.builtin.su
 
 - name: Crear base de datos de Synapse
-  # Synapse exige encoding UTF8 y collation C. template0 hace falta porque
-  # template1 ya tiene fijado el locale del sistema.
+  # Synapse EXIGE encoding UTF8 + collation C - si la BD se crea con el
+  # locale por defecto del sistema, Synapse se niega a arrancar (lo dice en
+  # sus propios logs al primer boot). template0 hace falta porque template1
+  # ya tiene el locale del sistema fijado y no se puede cambiar sobre él.
   community.postgresql.postgresql_db:
     name: "{{ synapse_db_name }}"
     owner: "{{ synapse_db_user }}"
@@ -52,14 +55,20 @@
     components: main
     signed_by: /usr/share/keyrings/matrix-org-archive-keyring.gpg
     state: present
+  register: synapse_repo
 
-- name: Actualizar cache de apt tras añadir el repo
+# Solo si el repo cambia (deb822_repository no actualiza la cache): antes
+# se actualizaba siempre y salia como cambiado en cada despliegue.
+# Tarea y no handler: tiene que ir ya, antes de instalar el paquete.
+- name: Actualizar cache de apt tras añadir el repo  # noqa: no-handler
   ansible.builtin.apt:
     update_cache: true
+  when: synapse_repo is changed
 
 - name: Preseleccionar server_name en debconf (evita el prompt interactivo del paquete)
-  # El postinst del paquete genera homeserver.yaml con esta respuesta, asi que
-  # no hace falta un generate-config manual.
+  # El postinst del paquete genera /etc/matrix-synapse/homeserver.yaml solo
+  # (con signing key y secretos incluidos) usando esta respuesta - por eso NO
+  # hace falta un "synapse generate-config" manual.
   ansible.builtin.debconf:
     name: matrix-synapse-py3
     question: matrix-synapse/server-name
@@ -73,10 +82,28 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
+- name: Carpeta de ajustes locales de la unidad de Synapse
+  ansible.builtin.file:
+    path: /etc/systemd/system/matrix-synapse.service.d
+    state: directory
+    mode: "0755"
+
+- name: Dar a Synapse 5 min para arrancar
+  # El ExecStartPre (comprobar la config y las claves) a veces pasa de los
+  # 90 s por defecto en frio; el 18-10 un reinicio fallo por eso y tumbo el relay.
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/matrix-synapse.service.d/tiempos.conf
+    content: |
+      [Service]
+      TimeoutStartSec=300
+    mode: "0644"
+  notify: recargar systemd
+
 - name: Desplegar overrides (postgres, registro, federacion) sin tocar homeserver.yaml
-  # homeserver.yaml lo genera el paquete una vez con sus propios secretos, que
-  # no deben regenerarse. Ansible solo gestiona conf.d/*.yaml, que sobrescribe
-  # claves puntuales.
+  # homeserver.yaml lo genera el paquete UNA vez con secretos propios (signing
+  # key, macaroon) que no se deben regenerar en cada run. Synapse soporta
+  # cargar /etc/matrix-synapse/conf.d/*.yaml como capa adicional que
+  # sobreescribe claves puntuales - eso es lo unico que gestiona Ansible aqui.
   ansible.builtin.template:
     src: conf.d-overrides.yaml.j2
     dest: /etc/matrix-synapse/conf.d/homelab.yaml

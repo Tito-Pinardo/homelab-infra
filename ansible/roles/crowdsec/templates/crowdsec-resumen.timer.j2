@@ -1,0 +1,9 @@
+[Unit]
+Description=Resumen diario de CrowdSec a Element
+
+[Timer]
+OnCalendar=*-*-* {{ crowdsec_hora_resumen }}:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

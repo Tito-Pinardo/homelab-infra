@@ -1,0 +1,279 @@
+---
+# Copias de seguridad con Proxmox Backup Server (CT 129). Ver docs/copias.md.
+# A mano: toca el host Proxmox (almacen, tarea diaria, avisos).
+#   ansible-playbook playbooks/pbs.yml
+
+- name: Host Proxmox
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Anadir el host Proxmox al inventario de esta ejecucion
+      ansible.builtin.add_host:
+        name: pve
+        ansible_host: 192.0.2.2
+        ansible_user: root
+        groups: pve_dynamic
+
+# ---------------------------------------------------------------- 1. lb2 en el CT
+
+- name: Almacen de lb2 montado en el CT de PBS
+  hosts: pve_dynamic
+  gather_facts: false
+  vars:
+    vmid: "{{ hostvars['pbs'].proxmox_vmid }}"
+    origen: "{{ hostvars['pbs'].pbs_datastore_host }}"
+  tasks:
+    # Si lb2 no esta montado no se crea nada: la carpeta caeria en el disco del
+    # sistema.
+    - name: Comprobar que lb2 esta montado
+      ansible.builtin.command:
+        argv: [mountpoint, -q, "{{ origen | dirname }}"]
+      changed_when: false
+
+    # Solo el usuario backup del CT (100034 en el host): Plex tambien monta lb2
+    # y no debe poder ni listar las copias.
+    - name: Carpeta del almacen en lb2
+      ansible.builtin.file:
+        path: "{{ origen }}"
+        state: directory
+        owner: "{{ hostvars['pbs'].pbs_uid_host }}"
+        group: "{{ hostvars['pbs'].pbs_uid_host }}"
+        mode: "0700"
+
+    - name: Montajes actuales del CT
+      ansible.builtin.command:
+        argv: [pct, config, "{{ vmid }}"]
+      register: pbs_config
+      changed_when: false
+
+    - name: Montar lb2 en /datastore (bind mount, requiere root@pam)
+      ansible.builtin.command:
+        argv: [pct, set, "{{ vmid }}", -mp0, "{{ origen }},mp=/datastore"]
+      when: "'mp0: ' ~ origen not in pbs_config.stdout"
+      changed_when: true
+      notify: Reiniciar el CT para que aplique el montaje
+
+    - name: Aplicar el reinicio antes de seguir
+      ansible.builtin.meta: flush_handlers
+
+    - name: Estado del almacen en Proxmox
+      ansible.builtin.command:
+        argv: [pvesm, status, --storage, "{{ hostvars['pbs'].pbs_storage_pve }}"]
+      register: pbs_storage
+      changed_when: false
+      failed_when: false
+
+  handlers:
+    - name: Reiniciar el CT para que aplique el montaje
+      ansible.builtin.command:
+        argv: [pct, reboot, "{{ vmid }}"]
+      changed_when: true
+      notify: Esperar al SSH del CT
+
+    - name: Esperar al SSH del CT
+      ansible.builtin.wait_for:
+        host: "{{ hostvars['pbs'].ansible_host }}"
+        port: 22
+        timeout: 120
+
+# ---------------------------------------------------------------- 2. PBS
+
+- name: Proxmox Backup Server
+  hosts: pbs
+  become: true
+  roles:
+    - pbs
+  tasks:
+    - name: Token para el host (solo si el host aun no tiene el almacen)
+      ansible.builtin.include_role:
+        name: pbs
+        tasks_from: token
+      when: hostvars['pve'].pbs_storage.rc != 0
+
+# ---------------------------------------------------------------- 3. Proxmox
+
+- name: Almacen, copias diarias y avisos en Proxmox
+  hosts: pve_dynamic
+  gather_facts: false
+  vars:
+    p: "{{ hostvars['pbs'] }}"
+    # Para las plantillas del rol pbs, que se renderizan aqui.
+    pbs_storage_pve: "{{ p.pbs_storage_pve }}"
+    pbs_datastore: "{{ p.pbs_datastore }}"
+    pbs_datasets: "{{ p.pbs_datasets }}"
+    pbs_hora_datasets: "{{ p.pbs_hora_datasets }}"
+  tasks:
+    # Cifrado en el cliente: la clave se genera aqui (/etc/pve/priv/storage/)
+    # y hay que guardar una copia fuera (docs/copias.md): sin ella, si muere el
+    # servidor, las copias no se pueden leer.
+    - name: Anadir el almacen de PBS a Proxmox (cifrado)
+      ansible.builtin.command:
+        argv:
+          - pvesm
+          - add
+          - pbs
+          - "{{ p.pbs_storage_pve }}"
+          - --server
+          - "{{ p.ansible_host }}"
+          - --datastore
+          - "{{ p.pbs_datastore }}"
+          - --username
+          - pve@pbs!pve
+          - --password
+          - "{{ p.pbs_token_secreto }}"
+          - --fingerprint
+          - "{{ p.pbs_huella }}"
+          - --encryption-key
+          - autogen
+          - --content
+          - backup
+          # La retencion la lleva la poda del propio PBS.
+          - --prune-backups
+          - keep-all=1
+      when: pbs_storage.rc != 0
+      changed_when: true
+      no_log: true
+
+    - name: Tareas de copia existentes
+      ansible.builtin.command:
+        argv: [pvesh, get, /cluster/backup, --output-format, json]
+      register: pbs_tareas
+      changed_when: false
+
+    # Todos los invitados salvo OKD: un CT nuevo entra solo en la copia.
+    - name: Tarea diaria de copia
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - create
+          - /cluster/backup
+          - --id
+          - "{{ p.pbs_tarea }}"
+          - --all
+          - "1"
+          - --exclude
+          - "{{ p.pbs_excluir_vmid | join(',') }}"
+          - --storage
+          - "{{ p.pbs_storage_pve }}"
+          - --schedule
+          - "{{ p.pbs_hora }}"
+          - --mode
+          - snapshot
+          - --notes-template
+          - "{{ '{{guestname}}' }}"
+          - --notification-mode
+          - notification-system
+          # Solo relee los ficheros que cambiaron (por metadatos): las copias
+          # de CT con muchos ficheros (node_modules...) pasan de minutos a segundos.
+          - --pbs-change-detection-mode
+          - metadata
+          - --enabled
+          - "1"
+      when: p.pbs_tarea not in (pbs_tareas.stdout | from_json | map(attribute='id') | list)
+      changed_when: true
+
+    # Las de antes de PBS (solo Forgejo y OpenBao, a lb2-copias).
+    - name: Retirar las tareas de copia sueltas de antes
+      ansible.builtin.command:
+        argv: [pvesh, delete, "/cluster/backup/{{ item }}"]
+      loop: [forgejo-diaria, openbao-diaria]
+      when: item in (pbs_tareas.stdout | from_json | map(attribute='id') | list)
+      changed_when: true
+
+    # ---------------------------------------------------------- avisos
+
+    - name: Destinos de aviso existentes
+      ansible.builtin.command:
+        argv: [pvesh, get, /cluster/notifications/endpoints/webhook, --output-format, json]
+      register: pbs_webhooks
+      changed_when: false
+
+    # Al relay E2EE de Synapse, como Zabbix, Wazuh y el CI.
+    - name: Destino de avisos Element
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - create
+          - /cluster/notifications/endpoints/webhook
+          - --name
+          - element
+          - --url
+          - "{{ hostvars['forgejo'].forgejo_ci_avisos_relay_url }}/"
+          - --method
+          - post
+          - --header
+          - "name=Content-Type,value={{ 'application/json' | b64encode }}"
+          - --header
+          - "name=Authorization,value={{ 'Bearer {{ secrets.token }}' | b64encode }}"
+          - --body
+          - "{{ lookup('template', '../roles/pbs/templates/webhook-body.json.j2') | trim | b64encode }}"
+          - --secret
+          - "name=token,value={{ hostvars['synapse'].vault_matrix_relay_shared_secret | b64encode }}"
+          - --secret
+          - "name=room,value={{ hostvars['synapse'].vault_matrix_alertas_room_id | b64encode }}"
+          - --comment
+          - "Sala de alertas de Element (relay E2EE de Synapse)"
+      when: "'element' not in (pbs_webhooks.stdout | from_json | map(attribute='name') | list)"
+      changed_when: true
+      no_log: true
+
+    - name: Reglas de aviso existentes
+      ansible.builtin.command:
+        argv: [pvesh, get, /cluster/notifications/matchers, --output-format, json]
+      register: pbs_reglas
+      changed_when: false
+
+    # Solo errores: una copia que sale bien no avisa (como la deriva).
+    - name: Errores de Proxmox (copias incluidas) a Element
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - create
+          - /cluster/notifications/matchers
+          - --name
+          - errores-a-element
+          - --target
+          - element
+          - --match-severity
+          - error
+          - --comment
+          - "Fallos de copias y demas errores del host"
+      when: "'errores-a-element' not in (pbs_reglas.stdout | from_json | map(attribute='name') | list)"
+      changed_when: true
+
+    # ---------------------------------------------------------- datasets ZFS
+
+    # Lo que vive en bind mounts no entra en la copia de su CT: los mundos de
+    # Minecraft (games/minecraft) van aparte, desde una instantanea ZFS.
+    - name: Carpeta de configuracion de las copias
+      ansible.builtin.file:
+        path: /etc/copias
+        state: directory
+        mode: "0700"
+
+    - name: Datos del relay de Element para avisar de fallos
+      ansible.builtin.template:
+        src: ../roles/pbs/templates/copias-matrix.env.j2
+        dest: /etc/copias/matrix.env
+        mode: "0600"
+      no_log: true
+
+    - name: Script de copia de datasets
+      ansible.builtin.template:
+        src: ../roles/pbs/templates/copia-datasets.sh.j2
+        dest: /usr/local/sbin/copia-datasets
+        mode: "0700"
+
+    - name: Servicio y temporizador
+      ansible.builtin.template:
+        src: "../roles/pbs/templates/copia-datasets.{{ item }}.j2"
+        dest: "/etc/systemd/system/copia-datasets.{{ item }}"
+        mode: "0644"
+      loop: [service, timer]
+
+    - name: Activar el temporizador
+      ansible.builtin.systemd:
+        name: copia-datasets.timer
+        enabled: true
+        state: started
+        daemon_reload: true

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel · BattlePros</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/img/logo.svg" alt="" width="34" height="34" />
+      <div>
+        <p class="brand-name">Battle<b>Pros</b></p>
+        <p class="brand-sub">Panel del bot · solo red interna</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="user-chip" class="user-chip" hidden></span>
+      <a class="btn btn-ghost btn-sm" href="https://www.example.net" target="_blank" rel="noreferrer">Ver web pública ↗</a>
+      <a class="btn btn-ghost btn-sm" href="https://auth.home.arpa/logout">Salir</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="locked" class="locked" hidden>
+      <h1>No hay sesión</h1>
+      <p>El panel solo funciona desde <b>https://battlepros.home.arpa</b>, después de entrar con Authelia.</p>
+    </section>
+
+    <div id="app" hidden>
+      <section class="stats">
+        <div class="stat"><p>Servidores</p><strong id="s-total">–</strong></div>
+        <div class="stat stat-on"><p>Encendidos</p><strong id="s-online">–</strong></div>
+        <div class="stat"><p>Jugando ahora</p><strong id="s-players">–</strong></div>
+        <div class="stat"><p>Mensajes en Discord</p><strong id="s-targets">–</strong></div>
+        <div class="stat"><p>Instancias AMP</p><strong id="s-amp">–</strong></div>
+      </section>
+
+      <section class="toolbar">
+        <div>
+          <h1>Servidores</h1>
+          <p class="muted">Cada servidor publica un mensaje con su estado en los canales de Discord que le pongas, y aparece en la web pública.</p>
+        </div>
+        <div class="toolbar-actions">
+          <input id="search" class="input" type="search" placeholder="Buscar por nombre, juego o dirección…" />
+          <button id="refresh" class="btn btn-ghost" type="button" title="Actualizar">↻</button>
+          <button id="new-server" class="btn btn-primary" type="button">+ Nuevo servidor</button>
+        </div>
+      </section>
+
+      <section id="server-list" class="server-list" aria-live="polite">
+        <div class="skeleton"></div><div class="skeleton"></div>
+      </section>
+      <p id="updated" class="muted small"></p>
+
+      <section id="auto-section" class="auto-section" hidden>
+        <h2>Publicados desde AMP</h2>
+        <p class="muted small">Tienen «Advertised Connection Address» en AMP, así que ya salen en la web pública con su dirección. Añádelos al bot si quieres que además publique su estado en Discord.</p>
+        <div id="auto-list" class="auto-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Alta / edición -->
+  <dialog id="server-dialog" class="dialog dialog-wide">
+    <form id="server-form" method="dialog">
+      <header class="dialog-head">
+        <h2 id="server-dialog-title">Nuevo servidor</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar">✕</button>
+      </header>
+      <div class="dialog-body form-grid">
+        <label class="field span-2">
+          <span>Instancia de AMP</span>
+          <select id="f-amp-select" class="input"></select>
+          <small id="f-amp-help" class="muted">Al elegirla se rellenan el nombre y el juego si están vacíos.</small>
+        </label>
+        <label class="field span-2">
+          <span>ID de la instancia</span>
+          <input id="f-amp" class="input mono" type="text" placeholder="GUID de AMP (opcional)" />
+        </label>
+        <label class="field">
+          <span>Nombre</span>
+          <input id="f-name" class="input" type="text" required placeholder="Ej: Vanilla 1.21" />
+        </label>
+        <label class="field">
+          <span>Juego / categoría</span>
+          <input id="f-category" class="input" type="text" list="categories" placeholder="Minecraft, Hytale…" />
+          <datalist id="categories"></datalist>
+        </label>
+        <label class="field span-2">
+          <span>Dirección para conectarse</span>
+          <input id="f-host" class="input mono" type="text" placeholder="Vacío = la que anuncia AMP (con puerto)" />
+          <small class="muted">Es lo que la gente copia en la web. Déjala vacía si la instancia tiene «Advertised Connection Address» en AMP.</small>
+        </label>
+
+        <div class="field span-2">
+          <span>Carátula</span>
+          <div class="cover-picker">
+            <div id="cover-preview" class="cover-preview"><span>Sin imagen</span></div>
+            <div class="cover-actions">
+              <label class="btn btn-ghost btn-sm">
+                Elegir imagen…
+                <input id="f-image-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+              </label>
+              <button id="f-image-clear" class="btn btn-ghost btn-sm" type="button">Quitar</button>
+              <small class="muted">jpg, png, gif o webp, hasta 5 MB. Encuádrala arrastrando y con la rueda. Sin imagen se usa la de Steam/AMP si la hay.</small>
+            </div>
+          </div>
+          <div id="cropper-wrap" class="cropper-wrap" hidden>
+            <img id="cropper-image" alt="Imagen a recortar" />
+          </div>
+          <input id="f-image-url" type="hidden" />
+        </div>
+      </div>
+      <footer class="dialog-foot">
+        <button class="btn btn-ghost" type="button" data-close>Cancelar</button>
+        <button id="server-save" class="btn btn-primary" type="submit">Guardar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Canal de Discord -->
+  <dialog id="target-dialog" class="dialog">
+    <form id="target-form" method="dialog">
+      <header class="dialog-head">
+        <h2>Publicar en un canal</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="muted small">El bot crea un mensaje con el estado de <b id="target-server-name"></b> y lo va actualizando.</p>
+        <label class="field">
+          <span>ID del canal</span>
+          <input id="t-channel" class="input mono" type="text" inputmode="numeric" pattern="\d{15,22}" required placeholder="123456789012345678" />
+          <small class="muted">En Discord: Ajustes → Avanzado → Modo desarrollador. Luego clic derecho en el canal → Copiar ID.</small>
+        </label>
+      </div>
+      <footer class="dialog-foot">
+        <button class="btn btn-ghost" type="button" data-close>Cancelar</button>
+        <button class="btn btn-primary" type="submit">Añadir</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Resultado de la prueba -->
+  <dialog id="test-dialog" class="dialog">
+    <header class="dialog-head">
+      <h2 id="test-title">Prueba</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Cerrar">✕</button>
+    </header>
+    <div id="test-body" class="dialog-body"></div>
+    <footer class="dialog-foot">
+      <button class="btn btn-primary" type="button" data-close>Cerrar</button>
+    </footer>
+  </dialog>
+
+  <!-- Confirmación -->
+  <dialog id="confirm-dialog" class="dialog dialog-narrow">
+    <div class="dialog-body">
+      <h2 id="confirm-title">¿Seguro?</h2>
+      <p id="confirm-text" class="muted"></p>
+    </div>
+    <footer class="dialog-foot">
+      <button class="btn btn-ghost" type="button" value="no">Cancelar</button>
+      <button class="btn btn-danger" type="button" value="yes">Borrar</button>
+    </footer>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

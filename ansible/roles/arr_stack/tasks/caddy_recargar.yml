@@ -1,0 +1,53 @@
+---
+# Aplica el Caddyfile.j2 sin reiniciar el stack ni el contenedor: lo
+# renderiza como candidato, lo valida con el propio Caddy, lo guarda como
+# Caddyfile real (para futuros arranques) y recarga en caliente desde el
+# candidato. Mismo flujo que playbooks/demeter.yml, reutilizable:
+#   - include_role: { name: arr_stack, tasks_from: caddy_recargar }
+# no_log en todo: el Caddyfile lleva la credencial de Codeman.
+
+- name: Crear directorio del candidato
+  ansible.builtin.file:
+    path: /opt/stacks/arr/proxy/caddy_config/candidato
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Renderizar el Caddyfile candidato
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /opt/stacks/arr/proxy/caddy_config/candidato/Caddyfile
+    mode: "0600"
+  no_log: true
+
+- name: Comparar con el Caddyfile en uso
+  ansible.builtin.command:
+    argv: [cmp, -s, /opt/stacks/arr/proxy/caddy_config/candidato/Caddyfile, /opt/stacks/arr/proxy/Caddyfile]
+  register: caddy_cmp
+  changed_when: false
+  failed_when: caddy_cmp.rc not in [0, 1]
+
+- name: Validar, guardar y recargar Caddy
+  when: caddy_cmp.rc == 1
+  block:
+    - name: Validar el candidato
+      ansible.builtin.command:
+        argv: [docker, exec, caddy, caddy, validate, --config, /config/candidato/Caddyfile, --adapter, caddyfile]
+      changed_when: false
+      no_log: true
+
+    - name: Guardar el candidato como Caddyfile real
+      ansible.builtin.copy:
+        src: /opt/stacks/arr/proxy/caddy_config/candidato/Caddyfile
+        dest: /opt/stacks/arr/proxy/Caddyfile
+        remote_src: true
+        mode: "0600"
+        backup: true
+      no_log: true
+
+    - name: Recargar Caddy en caliente
+      ansible.builtin.command:
+        argv: [docker, exec, caddy, caddy, reload, --config, /config/candidato/Caddyfile, --adapter, caddyfile]
+      changed_when: true
+      no_log: true

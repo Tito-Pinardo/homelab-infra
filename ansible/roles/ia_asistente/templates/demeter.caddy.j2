@@ -1,17 +1,23 @@
-# Demeter: solo desde la red local y la VPN, nunca desde la entrada publica.
-demeter.home.example {
+# Alcance de red: la LAN y la VPN de WireGuard (198.51.100.0/24), nunca la
+# entrada publica. Un cliente de VPN llega con su IP 198.51.100.x y sin esto
+# recibia "Solo red local" antes incluso de Authelia (visto el 2026-09-23).
+# Lo que sigue prohibido es entrar por Traefik (192.0.2.6) o por el
+# hairpin del router (192.0.2.1): aqui hay compras y facturas.
+demeter.home.arpa {
+{% if not caddy_ca_casa %}
     tls internal
+{% endif %}
     route {
-        @fuera not remote_ip {{ caddy_redes_permitidas }}
+        @fuera not remote_ip 192.0.2.0/24 198.51.100.0/24 127.0.0.1 ::1
         respond @fuera "Solo red local" 403
-        @entrada_publica remote_ip {{ caddy_entrada_publica }}
+        @entrada_publica remote_ip 192.0.2.6 192.0.2.1
         respond @entrada_publica "Solo red local" 403
         request_header -Remote-User
         request_header -Remote-Groups
         request_header -Remote-Email
         request_header -Remote-Name
         import protected
-        reverse_proxy 192.0.2.27:8092 {
+        reverse_proxy 192.0.2.247:8092 {
             header_up X-Demeter-Proxy "{{ demeter_proxy_secret['content'] | b64decode | trim }}"
         }
     }

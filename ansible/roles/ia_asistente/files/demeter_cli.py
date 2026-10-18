@@ -13,7 +13,6 @@ from demeter_extract import VERSION
 
 
 def main():
-    """Punto de entrada de la linea de comandos de Demeter."""
     ...
 
 

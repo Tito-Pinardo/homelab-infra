@@ -1,0 +1,15 @@
+# Generado por Ansible (role forgejo) - no editar a mano.
+# policy_in DROP: guarda una copia de infra-tf, solo entra lo listado aqui.
+[OPTIONS]
+enable: 1
+policy_in: DROP
+
+[RULES]
+{% for source in forgejo_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+IN ACCEPT -source {{ source }} -p tcp -dport {{ forgejo_ssh_port }}
+{% endfor -%}
+IN ACCEPT -source {{ forgejo_proxy_ip }} -p tcp -dport {{ forgejo_http_port }} # web por Caddy ({{ forgejo_domain }})
+IN ACCEPT -source {{ forgejo_runner_ip }} -p tcp -dport {{ forgejo_http_port }} # runner del CI
+IN ACCEPT -source {{ forgejo_despliegue_ip }} -p tcp -dport {{ forgejo_http_port }} # runner de despliegue (CT 123)
+IN ACCEPT -p icmp

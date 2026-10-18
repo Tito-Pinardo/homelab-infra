@@ -1,7 +1,12 @@
 ---
-# Homepage es una app Next.js sin release binaria: se compila (Node.js +
-# pnpm) dentro del CT. Necesita Node >= 22, que viene del repositorio de
-# NodeSource.
+# Homepage es una app Next.js sin release binaria - hay que compilarla
+# (Node.js + pnpm) dentro del CT.
+#
+# Probado primero con el nodejs 20.19 que trae Debian trixie de serie: el
+# build falla ("webidl.util.markAsUncloneable is not a function") porque
+# Next.js 16 (el que usa Homepage v2.3.0) necesita Node >= 22 - coincide con
+# el Dockerfile oficial de Homepage, que parte de node:22-slim. Hace falta
+# el repo de NodeSource.
 
 - name: Instalar git y gnupg (gpg no viene en la plantilla minima de Debian)
   ansible.builtin.apt:
@@ -34,8 +39,9 @@
     state: present
 
 - name: Instalar Node.js (via NodeSource) y npm
-  # state: latest a proposito: si nodejs ya estaba instalado desde Debian,
-  # "present" lo daria por bueno y no cambiaria al paquete de NodeSource.
+  # state: latest a proposito - si nodejs ya estaba instalado desde el repo
+  # de Debian (version mas vieja), "present" lo daria por bueno sin más y no
+  # cambiaria al paquete de NodeSource que necesitamos.
   ansible.builtin.apt:
     name: nodejs
     state: latest

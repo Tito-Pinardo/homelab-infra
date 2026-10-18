@@ -1,8 +1,25 @@
 #!/bin/sh
-# Empuja cada commit al repositorio de respaldo y al central, en segundo
-# plano. Un fallo aqui nunca bloquea el commit; queda en un log de /tmp.
+# Empuja cada commit automaticamente al repo de respaldo (CT dns-sync,
+# 192.0.2.249 - disco DISTINTO al de esta maquina) - sin esto, el unico
+# respaldo real dependia de acordarse de sincronizar manualmente, y mientras
+# tanto el trabajo sin empujar vivia solo en el disco de este equipo.
 #
-# Activar en un clon nuevo (una vez):
+# Best-effort y en segundo plano: el commit ya se hizo antes de que esto se
+# ejecute, asi que un fallo aqui (CT apagado, red caida) nunca bloquea ni
+# rompe el commit - solo se queda sin respaldar hasta el siguiente commit
+# con red disponible. Log de fallos en /tmp para poder revisarlo.
+#
+# Tambien al origen (remoto 'origin'): desde el 14-10-2026 es Forgejo
+# (git.home.arpa, ver docs/forgejo.md), que pasa el CI y avisa en Element. Antes
+# era el bare del CT 123, que queda como copia de solo lectura. Sin este push
+# automatico el origen se quedaba atras hasta que alguien empujaba a mano
+# (visto el 22-09, con el central 2 commits por detras).
+#
+# Activar en un clon nuevo (una vez, incluye el portatil/Mac):
 #   git config core.hooksPath githooks
-( git push backup HEAD:master > /tmp/infra-tf-backup-push.log 2>&1 & )
-( git push origin HEAD:master > /tmp/infra-tf-origin-push.log 2>&1 & )
+#
+# Empuja la rama actual (master esta protegida y no se commitea en ella: ver
+# githooks/pre-commit). Sin rama (HEAD suelto) no empuja nada.
+rama=$(git symbolic-ref --short -q HEAD) || exit 0
+( git push backup "HEAD:refs/heads/$rama" > /tmp/infra-tf-backup-push.log 2>&1 & )
+( git push -u origin "HEAD:refs/heads/$rama" > /tmp/infra-tf-origin-push.log 2>&1 & )

@@ -1,0 +1,154 @@
+---
+# OpenBao en el CT 128 (ver docs/openbao.md): paquete oficial, TLS propio,
+# almacenamiento raft. NO lo inicializa ni lo configura: eso se hace una vez
+# a mano (scripts/openbao/configurar.sh), porque genera la clave de
+# desellado, que no debe pasar por ningun automatismo.
+
+# Firewall propio del CT, con policy_in DROP (ver la plantilla).
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    openbao_fw_content: "{{ lookup('template', 'openbao.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: openbao_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+- name: Escribir el firewall propio del CT
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ openbao_fw_content }}"
+    stdin_add_newline: false
+  # Solo corre cuando el contenido es distinto (ver el when).
+  changed_when: true
+  when: >
+    not openbao_fw_current.content is defined or
+    (openbao_fw_current.content | default('') | b64decode) != openbao_fw_content
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# ---------------------------------------------------------------- paquete
+
+- name: Paquetes
+  ansible.builtin.apt:
+    name: [ca-certificates, python3-cryptography]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Descargar el paquete de OpenBao (suma fijada en group_vars)
+  ansible.builtin.get_url:
+    url: "https://github.com/openbao/openbao/releases/download/v{{ openbao_version }}/openbao_{{ openbao_version }}_linux_amd64.deb"
+    dest: "/var/cache/openbao_{{ openbao_version }}_linux_amd64.deb"
+    checksum: "sha256:{{ openbao_deb_sha256 }}"
+    mode: "0644"
+
+- name: Instalar OpenBao
+  ansible.builtin.apt:
+    deb: "/var/cache/openbao_{{ openbao_version }}_linux_amd64.deb"
+  notify: Reiniciar openbao
+
+# ---------------------------------------------------------------- TLS
+
+- name: Directorio del log de auditoria
+  ansible.builtin.file:
+    path: /var/log/openbao
+    state: directory
+    owner: openbao
+    group: openbao
+    mode: "0750"
+
+- name: Directorio de TLS
+  ansible.builtin.file:
+    path: /opt/openbao/tls
+    state: directory
+    owner: openbao
+    group: openbao
+    mode: "0750"
+
+- name: Clave privada
+  community.crypto.openssl_privatekey:
+    path: /opt/openbao/tls/tls.key
+    type: ECC
+    curve: secp384r1
+    owner: openbao
+    group: openbao
+    mode: "0600"
+
+# Certificado propio de 10 años: los clientes lo fijan tal cual (CT 123 y
+# Caddy), no hay CA intermedia que renovar.
+- name: Peticion de certificado
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: /opt/openbao/tls/tls.key
+    common_name: "{{ openbao_dominio }}"
+    subject_alt_name:
+      - "DNS:{{ openbao_dominio }}"
+      - "DNS:openbao"
+      - "IP:{{ ansible_host }}"
+      - "IP:127.0.0.1"
+  register: openbao_csr
+  changed_when: false
+
+- name: Certificado autofirmado
+  community.crypto.x509_certificate:
+    path: /opt/openbao/tls/tls.crt
+    csr_content: "{{ openbao_csr.csr }}"
+    privatekey_path: /opt/openbao/tls/tls.key
+    provider: selfsigned
+    selfsigned_not_after: "+3650d"
+    owner: openbao
+    group: openbao
+    mode: "0644"
+  notify: Reiniciar openbao
+
+- name: Leer el certificado para los clientes
+  ansible.builtin.slurp:
+    src: /opt/openbao/tls/tls.crt
+  register: openbao_cert
+
+# ---------------------------------------------------------------- servicio
+
+- name: Configuracion
+  ansible.builtin.template:
+    src: openbao.hcl.j2
+    dest: /etc/openbao/openbao.hcl
+    owner: root
+    group: openbao
+    mode: "0640"
+  notify: Reiniciar openbao
+
+- name: Arrancar OpenBao
+  ansible.builtin.systemd:
+    name: openbao
+    state: started
+    enabled: true
+
+- name: Aplicar reinicios pendientes antes de comprobar
+  ansible.builtin.meta: flush_handlers
+
+# 200 desellado, 503 sellado, 501 sin inicializar: los tres son "responde".
+- name: Comprobar que responde
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ openbao_puerto }}/v1/sys/health"
+    validate_certs: false
+    status_code: [200, 429, 501, 503]
+  register: openbao_salud
+  until: openbao_salud.status in [200, 429, 501, 503]
+  retries: 15
+  delay: 2
+
+- name: Estado
+  ansible.builtin.debug:
+    msg: >-
+      {{ {200: 'desellado', 429: 'desellado (standby)', 501: 'SIN INICIALIZAR: docs/openbao.md',
+          503: 'SELLADO: desellar en https://' ~ openbao_dominio}[openbao_salud.status] }}

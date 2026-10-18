@@ -1,7 +1,14 @@
 ---
-# Segundo repositorio bare en otro CT y otro disco, para que un fallo del
-# equipo principal no se lleve las dos copias. La cuenta usa git-shell: solo
-# puede hacer git-upload-pack y git-receive-pack.
+# Segundo repo bare de infra-tf, en un CT DISTINTO del disco de lucifer (que
+# aloja tanto el arbol de trabajo como el otro bare repo, "sync") - sin esto,
+# un fallo de disco/robo/ransomware en ese unico equipo pierde las dos
+# copias a la vez. Se apoya en git-shell (mecanismo NATIVO de git, no un
+# comando forzado artesanal como el de monitoring-push): esa cuenta solo
+# puede hacer git-upload-pack/git-receive-pack, ni siquiera una shell.
+#
+# Se reutiliza este CT (dns-sync, Alpine, ya ligero y siempre encendido) en
+# vez de crear uno nuevo solo para esto - el repo entero pesa unos pocos MB
+# (solo texto, sin binarios versionados), no justifica otro CT dedicado.
 
 - name: Instalar git
   community.general.apk:
@@ -20,8 +27,10 @@
     create: true
 
 - name: Crear grupo de sistema para el respaldo de git
-  # Alpine (busybox adduser) no crea un grupo propio por usuario; sin este paso
-  # el usuario cae en nogroup y el chgrp de .ssh falla.
+  # Alpine (busybox adduser), a diferencia de Debian, NO crea un grupo
+  # propio por usuario automaticamente - mismo gotcha ya visto en dns_sync.
+  # Sin este paso, el usuario cae en "nogroup" y el chgrp del directorio
+  # .ssh de mas abajo falla.
   ansible.builtin.group:
     name: git-backup
     system: true
@@ -55,8 +64,10 @@
       {% endfor %}
 
 - name: Crear el repo bare de respaldo (si no existe)
-  # Sin become_user: Alpine no trae sudo. Lo creo como root y corrijo el
-  # propietario en la tarea siguiente.
+  # Sin become_user aqui: Alpine no trae sudo instalado por defecto (ya
+  # conectamos como root via SSH, become_user fallaria con "sudo: not
+  # found"). Se crea como root y se corrige el propietario en la tarea
+  # siguiente.
   ansible.builtin.command: git init --bare /home/git-backup/infra-tf-backup.git
   args:
     creates: /home/git-backup/infra-tf-backup.git/HEAD

@@ -1,12 +1,21 @@
 ---
-# Actualiza las imagenes Docker de los stacks de compose y recrea solo los
-# contenedores cuya imagen ha cambiado. Los roles despliegan con
-# "pull: missing" a proposito, asi que las imagenes solo avanzan aqui.
+# Actualiza las imagenes Docker de los stacks de compose y recrea SOLO los
+# contenedores cuya imagen ha cambiado (el resto ni se reinicia). Es la
+# otra mitad de update-all.yml, que solo toca paquetes del sistema: los
+# roles despliegan con "pull: missing" a proposito (un redeploy no debe
+# cambiar de version sin querer), asi que las imagenes solo avanzan aqui.
 #
-# Uso:
+# Que hay que actualizar lo dice Hefesto cada manana (o preguntale a
+# Hermes); Pitia lo resume. Los stacks de cada CT estan en
+# inventory/hosts.yml (grupo docker_compose).
+#
+# Uso (desde ansible/):
 #   ansible-playbook playbooks/update-containers.yml                         # todos los CT
 #   ansible-playbook playbooks/update-containers.yml --limit dockge          # un CT
 #   ansible-playbook playbooks/update-containers.yml --limit dockge -e stacks=seerr,tautulli
+#
+# Paperless NO esta: fuera del alcance de los agentes IA (ver hosts.yml).
+# AMP tampoco: sus contenedores los gestiona el propio AMP.
 - name: Actualizar contenedores Docker
   hosts: docker_compose
   become: true
@@ -28,8 +37,8 @@
         desconocidos: "{{ stacks_pedidos | difference(todos) }}"
       run_once: true
 
-    # ignore_buildable: las imagenes que se construyen en local no se bajan;
-    # se reconstruyen con su rol si cambian.
+    # ignore_buildable: puppeteer-api (n8n) se construye en local, no hay
+    # imagen que bajar; se sigue reconstruyendo con su role si cambia.
     - name: Descargar imagenes nuevas
       community.docker.docker_compose_v2_pull:
         project_src: "{{ item.value }}"

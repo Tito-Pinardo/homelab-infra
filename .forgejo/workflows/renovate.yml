@@ -1,0 +1,26 @@
+# Renovate: PRs de versiones nuevas (runner "despliegue" del CT 123, que es
+# donde vive su token; el del CI sigue sin secretos). Ver docs/renovate.md.
+# Cada PR pasa el CI y el plan como cualquier otro; nada se aplica sin
+# fusionar y aprobar el despliegue.
+name: Renovate
+
+on:
+  schedule:
+    # Lunes 05:45 UTC (07:45 en Madrid en verano), despues de la deriva.
+    - cron: "45 5 * * 1"
+  workflow_dispatch:
+
+env:
+  ARBOL: /home/agent/.infra-tf/arbol
+
+jobs:
+  renovate:
+    runs-on: despliegue
+    steps:
+      - name: Script de master
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git -C "$ARBOL" checkout -q -f --detach origin/master
+      - name: Renovate
+        run: '"$ARBOL/scripts/renovate/ejecutar.sh"'

@@ -1,0 +1,47 @@
+---
+# CT 123 como root (via 'pct exec' en el host, como paperless: agent no tiene
+# sudo ni root entra por SSH). Binario y servicio del runner de despliegue;
+# se arranca en playbooks/forgejo.yml despues de crear su fichero de registro.
+#   - include_role: { name: forgejo, tasks_from: despliegue_root }
+
+- name: Descargar el runner (misma version y suma que el del CI)
+  vars:
+    version: "{{ hostvars['forgejo-runner'].forgejo_runner_version }}"
+  ansible.builtin.get_url:
+    url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ version }}/forgejo-runner-{{ version }}-linux-amd64"
+    dest: "/usr/local/bin/forgejo-runner-{{ version }}"
+    checksum: "sha256:{{ hostvars['forgejo-runner'].forgejo_runner_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enlazar la version en uso
+  ansible.builtin.file:
+    src: "/usr/local/bin/forgejo-runner-{{ hostvars['forgejo-runner'].forgejo_runner_version }}"
+    dest: /usr/local/bin/forgejo-runner
+    state: link
+  notify: Reiniciar el runner de despliegue
+
+- name: Directorio de configuracion
+  ansible.builtin.file:
+    path: /etc/forgejo-runner-despliegue
+    state: directory
+    owner: root
+    group: agent
+    mode: "0750"
+
+- name: Configuracion del runner de despliegue
+  ansible.builtin.template:
+    src: despliegue-config.yml.j2
+    dest: /etc/forgejo-runner-despliegue/config.yml
+    owner: root
+    group: agent
+    mode: "0640"
+  notify: Reiniciar el runner de despliegue
+
+- name: Unidad de systemd
+  ansible.builtin.template:
+    src: forgejo-runner-despliegue.service.j2
+    dest: /etc/systemd/system/forgejo-runner-despliegue.service
+    mode: "0644"
+  notify: Reiniciar el runner de despliegue

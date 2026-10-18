@@ -1,0 +1,20 @@
+#!/bin/sh
+# master esta protegida en Forgejo (desde el 14-10-2026): solo entra por PR con
+# el CI en verde, y al fusionar sale el plan de despliegue (docs/despliegue.md).
+# Un commit hecho en master aqui no se podria empujar: se para antes.
+rama=$(git symbolic-ref --short -q HEAD)
+if [ "$rama" = "master" ]; then
+  cat >&2 <<'MSG'
+
+  master esta protegida: los cambios entran por PR en Forgejo.
+  Crea una rama y repite el commit (los cambios siguen preparados):
+
+    git switch -c cambio-loquesea
+    git commit ...
+
+  Al empujarla, abre el PR en https://git.home.arpa/tito/infra-tf
+
+MSG
+  exit 1
+fi
+exit 0

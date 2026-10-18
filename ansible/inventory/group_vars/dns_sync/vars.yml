@@ -1,23 +1,89 @@
-# Dominios cuyo registro A mantengo sincronizado con la IP publica dinamica.
-# Anadir un dominio es una entrada mas aqui.
+# Lista de dominios cuyo registro A hay que mantener sincronizado con la IP
+# WAN dinamica (PPPoE Movistar). Anadir un dominio nuevo = una entrada mas
+# aqui, no otro script - antes eran 3 ficheros bash casi identicos
+# (dns_a/c/d_update.sh en el CT 105 "Scripts", con el token en texto plano
+# dentro de cada uno) con el mismo token de Cloudflare repetido.
+#
+# Este token es MAS AMPLIO que el de traefik_prod: alcanza las 3 zonas
+# (example.org, titopinardogutierrez.com, example.net), mientras que
+# el de Traefik solo llega a example.org (comprobado 2026-09-15, "zone
+# not found" para las otras dos).
 dns_sync_cloudflare_token: "{{ vault_dns_sync_cloudflare_token }}"
 
 dns_sync_domains:
   - domain: "example.org"
-    zone_id: "CHANGEME"
-    record_id: "CHANGEME"
-  - domain: "example.com"
-    zone_id: "CHANGEME"
-    record_id: "CHANGEME"
+    zone_id: "a8104bdb3a8bc8fa15ab4fdfbb33acdf"
+    record_id: "728fefb55a8175db536242eff097a9d8"
+  - domain: "titopinardogutierrez.com"
+    zone_id: "b154c4c3edddf27d5c7e90da151131fd"
+    record_id: "3be1f1216a8321117028de2197c9c591"
   - domain: "example.net"
-    zone_id: "CHANGEME"
-    record_id: "CHANGEME"
+    zone_id: "9781320ba1175999813b633d454d959e"
+    record_id: "d8d9ec5dddf4610f4b07a60d16a667bd"
 
-# Claves publicas autorizadas a empujar al repositorio de respaldo (rol
-# git_backup). No son secretas.
+# Claves publicas autorizadas a empujar el segundo repo bare de infra-tf
+# (respaldo, ver role git_backup) - NO son secretas (son publicas), viven
+# aqui igual que admin_ssh_keys en locals.tf. La del Mac es la MISMA que ya
+# usa para root@CT (locals.tf) - no se genero una nueva especifica, decision
+# del usuario (2026-09-17): mismo equipo/clave, no aporta aislamiento real
+# adicional generar otra solo para esto.
 git_backup_authorized_keys:
-  - "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
-  - "ssh-rsa AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
-  # Clave de solo lectura para que el asistente compruebe la fecha del ultimo
-  # commit del respaldo.
-  - "ssh-ed25519 AAAA_CLAVE_PUBLICA_DE_EJEMPLO usuario@equipo"
+  - "ssh-ed25519 AAAA...clave-publica usuario@equipo"
+  - "ssh-rsa AAAA...clave-publica usuario@equipo"
+  # Clave de SOLO LECTURA (git-shell la restringe a upload-pack, ni siquiera
+  # puede empujar) para que la tool "Mnemosine" del asistente IA compruebe
+  # la fecha del ultimo commit del propio backup, sin darle mas permiso que
+  # ese (2026-09-17).
+  - "ssh-ed25519 AAAA...clave-publica usuario@equipo"
+  # CT agents (192.0.2.237): remoto "backup" de ~/infra-tf. Se habia
+  # anadido a mano y el role la borraba al reaplicarse (2026-10-09).
+  - "ssh-ed25519 AAAA...clave-publica usuario@equipo"
+
+# --- amp_publicar (2026-10-09) ---------------------------------------------
+# Abre en el MikroTik y publica en Cloudflare los servidores de AMP que estan
+# encendidos; los retira al apagarlos. Ver docs/amp-publicar.md.
+# Con false se quita el cron (el script sigue instalado para --dry-run).
+amp_publicar_activo: true
+amp_publicar_amp_url: "http://192.0.2.136:8080"
+# Usuario dedicado del MikroTik: grupo "amp-nat" (read,write,api,rest-api) y solo
+# desde 192.0.2.249. Lo crea el usuario a mano, pasos en el doc.
+amp_publicar_mikrotik_host: "192.0.2.1"
+amp_publicar_mikrotik_user: "amp-nat"
+# Huella SHA-256 del certificado de www-ssl del router. Si se regenera el
+# certificado hay que actualizarla aqui (el script se niega a hablar).
+amp_publicar_mikrotik_fingerprint: "ED:CC:1F:2D:E6:57:71:01:3F:38:32:36:63:A5:65:C6:93:A3:73:F2:FE:A4:E3:CF:24:7A:71:53:B3:8E:3D:C0"
+amp_publicar_zone: "example.net"
+amp_publicar_zone_id: "9781320ba1175999813b633d454d959e"
+amp_publicar_destino: "192.0.2.136"
+# Segundos apagada antes de cerrar: un reinicio no borra el DNS (abrir es
+# inmediato).
+amp_publicar_espera_cierre: 180
+# velocity01 tiene reglas fijas del 25565 (con proteccion anti fuerza bruta);
+# ADS01 es el panel, nunca se publica.
+amp_publicar_ignorar: ["ADS01", "velocity01"]
+# Subdominio por instancia si en AMP no se ha puesto "Advertised Address".
+# Los Minecraft necesitan ademas su entrada en forced-hosts de Velocity.
+amp_publicar_nombres:
+  VRising01: vrising
+  Satisfactory01: satis
+  David01: expeditions
+  vanilla01: vanilla
+  redstone01: redstone
+  Autistaland201: autistaland
+  hytaletest01: hytale
+# Puertos declarados por AMP que NO se abren a Internet (por nombre o ref).
+amp_publicar_puertos_excluir: "rcon|api|admin|control|telnet|allocs|sftp"
+
+# velocity.toml al dia solo: cada Minecraft con direccion anunciada
+# <nombre>.example.net entra en [servers] y [forced-hosts] y se manda
+# "velocity reload". Cuenta de AMP propia, solo con permisos en velocity01
+# (ficheros y consola): vault_amp_publicar_velocity_*.
+amp_publicar_velocity_activo: true
+amp_publicar_velocity_instancia: "velocity01"
+amp_publicar_velocity_fichero: "velocity.toml"
+# IP en la que escuchan los Minecraft (sin Docker, solo en local): la que
+# escribe en [servers]. El proxy escucha en 0.0.0.0 (jugadores por
+# 192.0.2.136 y servidores en local).
+amp_publicar_velocity_ip_servidores: "172.17.0.1"
+# MiniMOTD: configuracion propia (icono estandar) para cada servidor nuevo.
+amp_publicar_minimotd_carpeta: "plugins/minimotd-velocity"

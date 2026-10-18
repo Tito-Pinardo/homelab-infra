@@ -1,0 +1,29 @@
+# Plan de cada PR (runner "despliegue" del CT 123). Ver docs/despliegue.md.
+#
+# No cambia nada: terraform plan y los playbooks afectados en --check, con el
+# resumen como comentario del PR y en Element. Sirve para ver, ANTES de
+# fusionar, que se va a tocar y que no.
+name: Plan del PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  PY: /home/agent/.local/share/pipx/venvs/ansible-core/bin/python
+  ARBOL: /home/agent/.infra-tf/arbol
+
+jobs:
+  plan:
+    runs-on: despliegue
+    steps:
+      - name: Checkout del despliegue en el commit del PR
+        run: |
+          [ -d "$ARBOL/.git" ] || git clone -q ssh://git@192.0.2.235:2222/tito/infra-tf.git "$ARBOL"
+          git -C "$ARBOL" fetch -q --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git -C "$ARBOL" checkout -q -f --detach "${{ github.event.pull_request.head.sha }}"
+      - name: Plan (Terraform + Ansible --check)
+        run: >-
+          "$PY" "$ARBOL/scripts/despliegue/despliegue.py" plan
+          --sha "${{ github.event.pull_request.head.sha }}"
+          --pr "${{ github.event.pull_request.number }}"

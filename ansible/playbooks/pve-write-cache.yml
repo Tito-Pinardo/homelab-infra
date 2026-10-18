@@ -1,7 +1,27 @@
 ---
-# Cache de escritura (write back) en los discos del RAID1 del sistema del
-# host Proxmox, para mejorar el rendimiento de escritura de los CT.
-# El ajuste se hace persistente con una regla de udev.
+# Cache de escritura (write back) en los dos discos del RAID1 del sistema del
+# host Proxmox (md0: sda3 + sdh3, LVM-thin con los ~16 CT).
+#
+# Por que (2026-09-25): un 'apt upgrade' en el CT wazuh se colgo ~3 h porque
+# ese RAID1 son 2 HDD SAS de 7200 rpm con la cache en 'write through': cada
+# escritura tiene que llegar al plato antes de confirmarse, ~55 escrituras/s
+# por disco, w_await 30-50 ms, presion de I/O ~50 %. Con 'write back' medido
+# en carga real: ~143 escrituras/s por disco y ~25-30 ms.
+#
+# Riesgo que asumo (2026-09-25): sin SAI, en un corte de luz se
+# pierde lo que este en la cache del disco. mdadm, LVM y ext4 piden flush/FUA
+# y los discos los respetan ('supports DPO and FUA' en dmesg), asi que el
+# sistema de ficheros queda consistente, pero se pueden perder las ultimas
+# escrituras aun no volcadas. Cuando haya SAI sigue siendo recomendable.
+#
+# Se aplica por WWN, no por sdX (el orden de los discos puede cambiar). Solo
+# estos dos: los discos ZFS (games, raiz5) NO se tocan - ZFS gestiona su
+# propia cache/flush. Sin persistencia el valor vuelve a 'write through' al
+# reiniciar el host (es un parametro del disco, no de un fichero de config),
+# de ahi la regla udev.
+#
+# Para revertir: borrar /etc/udev/rules.d/99-write-cache.rules y reiniciar
+# (o 'echo "write through" > /sys/block/sdX/device/scsi_disk/*/cache_type').
 
 - name: Host Proxmox
   hosts: localhost
@@ -10,7 +30,7 @@
     - name: Anadir el host Proxmox al inventario de esta ejecucion
       ansible.builtin.add_host:
         name: pve
-        ansible_host: 192.0.2.10
+        ansible_host: 192.0.2.2
         ansible_user: root
         groups: pve_dynamic
 
@@ -18,16 +38,18 @@
   hosts: pve_dynamic
   gather_facts: false
   vars:
-    # WWN de los discos (udevadm info -q property -n /dev/sdX). Se definen en
-    # el inventario privado.
-    pve_write_cache_wwn: []
+    # Seagate ST91000640SS (sda y sdh). 'udevadm info -q property -n /dev/sdX'.
+    pve_write_cache_wwn:
+      - "0x5000c500427db0bb"
+      - "0x5000c5005921ed5b"
   tasks:
     - name: Regla udev que pone write back en esos discos
       ansible.builtin.copy:
         dest: /etc/udev/rules.d/99-write-cache.rules
         mode: "0644"
         content: |
-          # Gestionado por Ansible (playbooks/pve-write-cache.yml): no editar a mano.
+          # Gestionado por Ansible (playbooks/pve-write-cache.yml) - no editar a mano.
+          # Discos del RAID1 del sistema (md0). Ver el playbook para el porque y el riesgo.
           {% for wwn in pve_write_cache_wwn %}
           ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd*[!0-9]", ENV{ID_WWN}=="{{ wwn }}", RUN+="/bin/sh -c 'echo write back | tee /sys/block/%k/device/scsi_disk/*/cache_type >/dev/null'"
           {% endfor %}

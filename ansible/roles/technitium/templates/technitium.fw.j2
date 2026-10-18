@@ -1,3 +1,5 @@
-# Firewall de Proxmox del CT de Technitium: SSH solo desde
-# technitium_ssh_allowed_sources, sin tocar la politica del resto de puertos.
-# El contenido real de las reglas no se publica.
+[RULES]
+{% for source in technitium_ssh_allowed_sources -%}
+IN ACCEPT -source {{ source }} -p tcp -dport 22
+{% endfor -%}
+IN DROP -p tcp -dport 22 -log nolog # solo PC admin + Mac via WireGuard

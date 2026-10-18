@@ -1,0 +1,48 @@
+{% set conf = {
+  "amp": {
+    "url": amp_publicar_amp_url,
+    "user": vault_amp_publicar_amp_user,
+    "password": vault_amp_publicar_amp_password,
+    "totp": vault_amp_publicar_amp_totp
+  },
+  "mikrotik": {
+    "host": amp_publicar_mikrotik_host,
+    "user": amp_publicar_mikrotik_user,
+    "password": vault_amp_publicar_mikrotik_password,
+    "fingerprint": amp_publicar_mikrotik_fingerprint
+  },
+  "cloudflare": {
+    "token": dns_sync_cloudflare_token,
+    "zone_id": amp_publicar_zone_id,
+    "zone": amp_publicar_zone
+  },
+  "destino": amp_publicar_destino,
+  "ignorar": amp_publicar_ignorar,
+  "nombres": amp_publicar_nombres,
+  "minecraft_por_velocity": true,
+  "estado": "/var/lib/amp-publicar.json",
+  "espera_cierre": amp_publicar_espera_cierre,
+  "puertos_excluir": amp_publicar_puertos_excluir
+} %}
+{# velocity.toml por la API de AMP con la cuenta propia de Velocity (docs/amp-publicar.md). #}
+{% if amp_publicar_velocity_activo %}
+{%   set _ = conf.update({"velocity": {
+       "instancia": amp_publicar_velocity_instancia,
+       "fichero": amp_publicar_velocity_fichero,
+       "ip_servidores": amp_publicar_velocity_ip_servidores,
+       "estado": "/var/lib/amp-publicar/velocity.json",
+       "copias": "/var/lib/amp-publicar/velocity.toml",
+       "minimotd": {
+         "carpeta": amp_publicar_minimotd_carpeta,
+         "plantilla": "/usr/local/share/amp-publicar/minimotd-servidor.conf",
+         "icono": "/usr/local/share/amp-publicar/minimotd-estandar.png"
+       },
+       "amp": {
+         "url": amp_publicar_amp_url,
+         "user": vault_amp_publicar_velocity_user,
+         "password": vault_amp_publicar_velocity_password,
+         "totp": vault_amp_publicar_velocity_totp | default("")
+       }
+     }}) %}
+{% endif %}
+{{ conf | to_nice_json }}

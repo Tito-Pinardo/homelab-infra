@@ -1,0 +1,141 @@
+---
+# Proxmox Backup Server en el CT 129 (ver docs/copias.md). El almacen es
+# /datastore, montado desde lb2 por playbooks/pbs.yml antes de este rol.
+
+# Firewall propio del CT, con policy_in DROP (ver la plantilla).
+- name: Renderizar el firewall propio del CT
+  ansible.builtin.set_fact:
+    pbs_fw_content: "{{ lookup('template', 'pbs.fw.j2') }}"
+
+- name: Leer el firewall actual del CT en el host Proxmox (si existe)
+  ansible.builtin.slurp:
+    src: "/etc/pve/firewall/{{ proxmox_vmid }}.fw"
+  register: pbs_fw_current
+  failed_when: false
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# /etc/pve es pmxcfs: se escribe con 'cat >' (ni copy ni lineinfile pueden).
+- name: Escribir el firewall propio del CT
+  ansible.builtin.shell:
+    cmd: "cat > /etc/pve/firewall/{{ proxmox_vmid }}.fw"
+    stdin: "{{ pbs_fw_content }}"
+    stdin_add_newline: false
+  # Solo corre cuando el contenido es distinto (ver el when).
+  changed_when: true
+  when: >
+    not pbs_fw_current.content is defined or
+    (pbs_fw_current.content | default('') | b64decode) != pbs_fw_content
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+# ---------------------------------------------------------------- paquete
+
+# La clave del repo de Proxmox, la misma que ya usa el host (no se descarga).
+- name: Leer la clave del repo de Proxmox del host
+  ansible.builtin.slurp:
+    src: /usr/share/keyrings/proxmox-archive-keyring.gpg
+  register: pbs_keyring
+  delegate_to: 192.0.2.2
+  vars:
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_host: 192.0.2.2
+
+- name: Clave del repo de Proxmox
+  ansible.builtin.copy:
+    content: "{{ pbs_keyring.content | b64decode }}"
+    dest: /usr/share/keyrings/proxmox-archive-keyring.gpg
+    mode: "0644"
+
+- name: Repo de PBS (sin suscripcion)
+  ansible.builtin.deb822_repository:
+    name: pbs-no-subscription
+    types: deb
+    uris: http://download.proxmox.com/debian/pbs
+    suites: "{{ ansible_distribution_release }}"
+    components: pbs-no-subscription
+    signed_by: /usr/share/keyrings/proxmox-archive-keyring.gpg
+    state: present
+  register: pbs_repo
+
+- name: Instalar Proxmox Backup Server
+  ansible.builtin.apt:
+    name: proxmox-backup-server
+    state: present
+    update_cache: "{{ pbs_repo is changed }}"
+
+# ---------------------------------------------------------------- almacen
+
+- name: Almacenes existentes
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, datastore, list, --output-format, json]
+  register: pbs_almacenes
+  changed_when: false
+
+- name: Crear el almacen en /datastore
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, datastore, create, "{{ pbs_datastore }}", /datastore,
+           --gc-schedule, "daily", --comment, "lb2 (USB), copias de los CT"]
+  when: pbs_datastore not in (pbs_almacenes.stdout | from_json | map(attribute='name') | list)
+  changed_when: true
+
+- name: Tareas de poda existentes
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, prune-job, list, --output-format, json]
+  register: pbs_podas
+  changed_when: false
+
+- name: Poda diaria (retencion)
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, prune-job, create, poda-diaria, --store, "{{ pbs_datastore }}",
+           --schedule, "daily",
+           --keep-daily, "{{ pbs_keep_daily }}", --keep-weekly, "{{ pbs_keep_weekly }}",
+           --keep-monthly, "{{ pbs_keep_monthly }}"]
+  when: "'poda-diaria' not in (pbs_podas.stdout | from_json | map(attribute='id') | list)"
+  changed_when: true
+
+- name: Tareas de verificacion existentes
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, verify-job, list, --output-format, json]
+  register: pbs_verificaciones
+  changed_when: false
+
+# Lee de nuevo cada copia y comprueba sus sumas: detecta si el disco USB
+# empieza a fallar antes de necesitar una copia.
+- name: Verificacion semanal
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, verify-job, create, verificacion-semanal, --store, "{{ pbs_datastore }}",
+           --schedule, "sun 05:00", --ignore-verified, "true", --outdated-after, "30"]
+  when: "'verificacion-semanal' not in (pbs_verificaciones.stdout | from_json | map(attribute='id') | list)"
+  changed_when: true
+
+# ---------------------------------------------------------------- acceso de Proxmox
+
+- name: Usuarios de PBS
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, user, list, --output-format, json]
+  register: pbs_usuarios
+  changed_when: false
+
+- name: Usuario pve@pbs (lo usa el host para hacer las copias)
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, user, create, pve@pbs, --comment, "Host Proxmox: copias diarias"]
+  when: "'pve@pbs' not in (pbs_usuarios.stdout | from_json | map(attribute='userid') | list)"
+  changed_when: true
+
+- name: Huella del certificado de PBS
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, cert, info]
+  register: pbs_cert
+  changed_when: false
+
+- name: Guardar la huella para el play del host
+  ansible.builtin.set_fact:
+    pbs_huella: "{{ pbs_cert.stdout | regex_search('Fingerprint \\(sha256\\):\\s*(\\S+)', '\\1') | first }}"

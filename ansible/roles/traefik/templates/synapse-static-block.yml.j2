@@ -1,6 +1,11 @@
-{# Synapse sirve siempre una pagina de bienvenida en /_matrix/static/ y no se
-   puede desactivar. La bloqueo reescribiendo la ruta a algo que Synapse no
-   reconoce, asi responde 404 sin tocar el resto de /_matrix/. #}
+{# Caso especial, no generico: Synapse sirve de serie una pagina de
+   bienvenida en /_matrix/static/ ("It works! Synapse is running") en
+   cualquier instalacion publica - no hay opcion en homeserver.yaml para
+   desactivarla. Se bloquea aqui reescribiendo la ruta a algo que Synapse no
+   reconoce, asi el propio Synapse responde 404 de forma natural - sin
+   tocar el resto de /_matrix/client/... que Element necesita para
+   funcionar. Referencia al servicio "matrix-example-org_svc" ya creado
+   por route.yml.j2 (mismo namespace, todo conf.d/ se fusiona). #}
 http:
   middlewares:
     block_matrix_static:

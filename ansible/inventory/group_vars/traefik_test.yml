@@ -1,16 +1,17 @@
-# Grupo de pruebas: traefik_cloudflare_api_token se deja sin definir a
-# proposito y cloudflare.env.j2 escribe un marcador. En un grupo real esta
-# variable va cifrada con ansible-vault.
+# Grupo de PRUEBAS: traefik_cloudflare_api_token se deja SIN DEFINIR a propósito.
+# El template cloudflare.env.j2 detecta que no existe y escribe un placeholder.
+# Para un grupo real (ej. "traefik_prod") esta variable iria cifrada con
+# ansible-vault, nunca en texto plano en este fichero.
 
 traefik_version: "3.5.3"
 traefik_acme_email: "tu@correo.com"
 traefik_dashboard_host: "traefik-test.example.org"
-# Credencial de pruebas: generar un hash propio con htpasswd. Nunca reutilizar
-# el de produccion.
-traefik_dashboard_htpasswd: "admin:CAMBIAR_POR_HASH_HTPASSWD"
+# Credencial de PRUEBA, generada para este clon (usuario: admin / clave: traefik-test-2026)
+# NO es la del Traefik real - nunca reutilices el hash de producción en un entorno de pruebas.
+traefik_dashboard_htpasswd: "admin:$apr1$fANGfrIU$EE8m8k9Gn8qQIop2RlUfZ/"
 
-# Demo del mecanismo de dominios: hosts ficticios sin backend, solo para
-# probar que se genera un router por entrada.
+# Demo del mecanismo generico de dominios - hosts ficticios, sin backend real,
+# solo para probar que Ansible genera un fichero de router por entrada de la lista.
 traefik_routes:
   - name: demo-app-uno
     host: "app1.demo.test"

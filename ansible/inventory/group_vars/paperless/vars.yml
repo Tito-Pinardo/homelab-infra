@@ -1,30 +1,43 @@
-# Paperless-ngx: documentos personales. Ver lxc-paperless.tf.
+# Paperless-ngx (CT 119, sustituye al CT 133). Documentos personales
+# sensibles - ver lxc-paperless.tf para el porque de las decisiones de
+# seguridad (sin SSH, connection plugin distinto al resto de la flota).
 #
-# ansible_become: false a proposito: se conecta como root a traves del host
-# Proxmox con pct exec, y become no esta probado con ese connection plugin.
+# ansible_become: false a proposito - remote_user ya es root (via SSH al
+# host Proxmox + pct exec), y become/sudo no esta probado con el connection
+# plugin proxmox_pct_remote. playbooks/monitoring.yml usa "become: true" a
+# nivel de play (para el resto de la flota, SSH normal) - esta variable de
+# grupo lo sobreescribe solo para este host.
 ansible_become: false
-# Valores necesarios para restaurar la base de datos sin romper nada.
+#
+# Valores copiados 1:1 del CT 133 real (docker-compose.env) para no romper
+# nada al restaurar la base de datos (PAPERLESS_ALLOWED_HOSTS/CSRF ya
+# incluyen la IP definitiva .245, no la temporal .248 de la migracion).
 paperless_ocr_language: spa
 paperless_ocr_languages: "spa+eng"
 paperless_time_zone: "Europe/Madrid"
-paperless_url: "https://paperless.home.example"
-paperless_allowed_hosts: "paperless.home.example,192.0.2.25"
-paperless_csrf_trusted_origins: "https://paperless.home.example"
+paperless_url: "https://paperless.home.arpa"
+paperless_allowed_hosts: "paperless.home.arpa,192.0.2.245"
+paperless_csrf_trusted_origins: "https://paperless.home.arpa"
 paperless_task_workers: 1
 paperless_threads_per_worker: 2
 
-# IA nativa de Paperless: la configuracion vive en la base de datos. Estos
-# valores son referencia para poder reconfigurarla a mano.
+# IA nativa (Application Configuration -> AI Settings, vive en la BD, viaja
+# sola con el pg_restore - estos valores son solo referencia/documentacion
+# para poder reconfigurar a mano si hiciera falta, Ollama no tiene auth asi
+# que no son secretos).
 paperless_llm_backend: ollama
-paperless_llm_endpoint: "http://192.0.2.13:11434"
+paperless_llm_endpoint: "http://192.0.2.30:11434"
 paperless_llm_model: "qwen2.5vl:7b"
 paperless_llm_embedding_backend: ollama
-paperless_llm_embedding_endpoint: "http://192.0.2.13:11434"
+paperless_llm_embedding_endpoint: "http://192.0.2.30:11434"
 paperless_llm_embedding_model: "nomic-embed-text"
 paperless_llm_output_language: spa
 
-# Firewall propio del CT (ver playbooks/paperless.yml).
-paperless_firewall_allowed_tcp: []  # se define en el inventario privado
+# Firewall propio del CT (ver playbooks/paperless.yml, tarea delegada al
+# host Proxmox) - sin regla de SSH a proposito.
+paperless_firewall_allowed_tcp:
+  - { source: "192.0.2.243", port: 8443 }  # Caddy (CT106)
+  - { source: "192.0.2.240", port: 8443 }  # Zabbix (chequeo disponibilidad)
 
 db_password: "{{ vault_paperless_db_password }}"
 secret_key: "{{ vault_paperless_secret_key }}"

@@ -1,0 +1,5 @@
+---
+- name: Recargar crowdsec
+  ansible.builtin.systemd:
+    name: crowdsec
+    state: reloaded
